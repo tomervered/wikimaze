@@ -109,6 +109,11 @@ test('server routes manifest, language prefix and extras', async () => {
     const cat = await get('/he/catalog/movie/wikimaze-search/search=%D7%94%D7%AA%D7%97%D7%9C%D7%94.json');
     assert.strictEqual(JSON.parse(cat.body).metas[0].name, 'התחלה/he');
 
+    // Vercel's routing (vercel.json) adds ?path=; either form must resolve.
+    for (const p of ['/he/manifest.json?path=%2Fhe%2Fmanifest.json', '/api/index.js?path=%2Fhe%2Fmanifest.json']) {
+      assert.strictEqual(JSON.parse((await get(p)).body).id, 'community.wikimaze.he', p);
+    }
+
     assert.strictEqual((await get('/nope.json')).status, 404);
     assert.match((await get('/')).body, /Install in Stremio/);
   } finally {
