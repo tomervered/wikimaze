@@ -166,7 +166,7 @@ test('genre filters: option text in either language, on every list', async () =>
   }
 });
 
-test('trending: needs two editions or the viewer\'s own; local edition weighs more', async () => {
+test('trending: two editions or the viewer\'s own come first; local edition weighs more', async () => {
   const lists = {
     en: [{ article: 'Main_Page', views: 9e9 }, { article: 'Big_Film', views: 600 }, { article: 'Show_(TV_series)', views: 300 }, { article: 'Solo_Film', views: 100 }],
     de: [{ article: 'Big_Film', views: 100 }],
@@ -194,8 +194,9 @@ test('trending: needs two editions or the viewer\'s own; local edition weighs mo
     const fresh = require('../src/trending');
     // tt2: en share + 3 x he share, two editions; tt3: Hebrew only, but local.
     assert.deepStrictEqual((await fresh.trending('series', 'he')).map((x) => x.imdb), ['tt2', 'tt3']);
-    // tt9 trends only on English Wikipedia: dropped. tt1 is in en and de.
-    assert.deepStrictEqual((await fresh.trending('movie', 'en')).map((x) => x.imdb), ['tt1']);
+    // tt9 trends only on English Wikipedia: after tt1 (en and de) although it
+    // has more views there, and still listed so scrolling keeps loading.
+    assert.deepStrictEqual((await fresh.trending('movie', 'en')).map((x) => x.imdb), ['tt1', 'tt9']);
   } finally {
     http.getJson = realGet;
     delete require.cache[require.resolve('../src/trending')];
@@ -252,4 +253,14 @@ test('spike: newest day against the average of the days before', () => {
   const s = spike(days);
   assert.deepStrictEqual([...s.keys()], ['New']);
   assert.ok(Math.abs(s.get('New') - 0.3) < 1e-9);
+});
+
+test('recency: new titles weigh 1, a year-old one about 0.55, old ones the floor', () => {
+  const { recency } = require('../src/trending');
+  const ago = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+  assert.ok(recency(ago(-5)) === 1);
+  assert.ok(Math.abs(recency(ago(365)) - 0.55) < 0.01);
+  assert.ok(recency(ago(3650)) < 0.11);
+  assert.strictEqual(recency(undefined), 0.1);
+  assert.ok(Math.abs(recency(ago(730), 730, 0.5) - 0.75) < 0.01);
 });

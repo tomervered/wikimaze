@@ -6,7 +6,7 @@ const pkg = require('../package.json');
 const wikidata = require('./wikidata');
 const tvmaze = require('./tvmaze');
 const genres = require('./genres');
-const { trending } = require('./trending');
+const { trending, recency } = require('./trending');
 
 const PAGE = 100;
 
@@ -126,9 +126,16 @@ async function catalog(type, id, extra, lang) {
   }
   if (type === 'series' && (id === 'wikimaze-airing' || id === 'wikimaze-hot')) {
     const recent = id === 'wikimaze-hot' ? tvmaze.airingNow(['US', 'GB', 'IL'], 2) : tvmaze.airingNow();
-    const shows = (await recent).filter(
+    let shows = (await recent).filter(
       (s) => s.externals && s.externals.imdb && (!genre || (s.genres || []).includes(genre.maze))
     );
+    if (id === 'wikimaze-hot') {
+      // Release-date weight on the show's premiere, gentler than for movies
+      // (two-year half-life, floor 0.5): a long-running hit with a new
+      // episode still beats a brand-new show nobody watches.
+      const score = (x) => (x.weight || 0) * recency(x.premiered, 730, 0.5);
+      shows = [...shows].sort((a, b) => score(b) - score(a));
+    }
     const page = shows.slice(skip, skip + PAGE);
     const names = await localNames(page.map((s) => s.externals.imdb), lang);
     return page.map((s) => seriesPreview(s, names[s.externals.imdb] && names[s.externals.imdb].name));

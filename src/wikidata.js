@@ -85,11 +85,15 @@ async function search(type, query, lang, limit = 40) {
 // Classics: the best-known films or series of all time, optionally in one
 // genre. Wikidata has no view counts, so the number of Wikipedia editions
 // with an article (sitelinks) stands in for fame. Candidates come from
-// full-text search (the 1000 most-linked-to items of the type and genre),
-// then get re-ranked by sitelinks. Films not out yet are dropped.
+// full-text search ordered by incoming links, in blocks of 1000; each block
+// is re-ranked by sitelinks and the blocks are chained, so scrolling keeps
+// loading (search stops at 10000 results) and pages never repeat a title.
+// Films not out yet are dropped.
 const POPULAR_POOL = 1000;
+const SEARCH_MAX = 10000;
 
-async function classics(type, lang, skip = 0, pageSize = 100, genreIds = null) {
+// One block: search results offset..offset+999, ranked by sitelinks.
+async function classicsBlock(type, lang, genreIds, index) {
   const classes = CLASSES[type].map((c) => `P31=${c}`).join('|');
   const genre = genreIds ? ` haswbstatement:${genreIds.map((g) => `P136=${g}|P31=${g}`).join('|')}` : '';
   const srsearch = `haswbstatement:P345 haswbstatement:${classes}${genre}`;
@@ -98,7 +102,8 @@ async function classics(type, lang, skip = 0, pageSize = 100, genreIds = null) {
       SERVICE wikibase:mwapi {
         bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "Search";
                         mwapi:srsearch ${str(srsearch)}; mwapi:srsort "incoming_links_desc";
-                        mwapi:srlimit "max"; wikibase:limit ${POPULAR_POOL} .
+                        mwapi:srlimit "max"; mwapi:sroffset "${index * POPULAR_POOL}";
+                        wikibase:limit ${POPULAR_POOL} .
         ?item wikibase:apiOutputItem mwapi:title.
       }
       ?item wdt:P345 ?imdb; wikibase:sitelinks ?links. FILTER(STRSTARTS(?imdb, "tt"))
@@ -109,10 +114,33 @@ async function classics(type, lang, skip = 0, pageSize = 100, genreIds = null) {
     20000
   );
   const links = new Map(rows.map((r) => [r.imdb.value, Number(r.links.value)]));
-  return dedupeRows(rows)
+  const items = dedupeRows(rows)
     .filter((x) => type !== 'movie' || releasedBy(x))
-    .sort((a, b) => links.get(b.imdb) - links.get(a.imdb))
-    .slice(skip, skip + pageSize);
+    .sort((p, q) => links.get(q.imdb) - links.get(p.imdb));
+  return { items, last: new Set(rows.map((r) => r.item.value)).size < POPULAR_POOL / 2 };
+}
+
+async function classics(type, lang, skip = 0, pageSize = 100, genreIds = null) {
+  const out = [];
+  const seen = new Set();
+  // A block keeps roughly 70-90% of its results after filtering, so the
+  // blocks this page probably needs are fetched together, then one at a
+  // time. Each block is cached on its own; a title already listed in an
+  // earlier block is skipped.
+  const blocks = SEARCH_MAX / POPULAR_POOL;
+  let next = 0;
+  let width = Math.min(blocks, Math.ceil((skip + pageSize) / (POPULAR_POOL * 0.7)));
+  while (next < blocks) {
+    const ids = Array.from({ length: Math.min(width, blocks - next) }, (_, i) => next + i);
+    const batch = await Promise.all(ids.map((i) => classicsBlock(type, lang, genreIds, i)));
+    next += ids.length;
+    width = 1;
+    for (const { items, last } of batch) {
+      for (const x of items) if (!seen.has(x.imdb)) seen.add(x.imdb) && out.push(x);
+      if (out.length >= skip + pageSize || last) return out.slice(skip, skip + pageSize);
+    }
+  }
+  return out.slice(skip, skip + pageSize);
 }
 
 // The query service flattens a year-only date to January 1st, so a Jan 1

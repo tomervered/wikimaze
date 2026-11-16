@@ -72,6 +72,17 @@ function spike(days) {
   return out;
 }
 
+// Very Trending favours new titles: a score is multiplied by a weight that
+// halves for every `halfLife` days since release and never drops below
+// `floor` (a classic in the news still shows, just lower). Unknown date: floor.
+function recency(date, halfLife = 365, floor = 0.1) {
+  if (!date) return floor;
+  const iso = /^\d{4}$/.test(date) ? `${date}-07-01` : date;
+  const age = (Date.now() - Date.parse(iso)) / 86400000;
+  if (!(age > 0)) return 1;
+  return floor + (1 - floor) * 0.5 ** (age / halfLife);
+}
+
 // Films and series together, so one Wikidata query serves both catalogs and
 // both modes (the title list, and so the query, is the same).
 async function fromWiki(wiki, lang, mode) {
@@ -82,7 +93,10 @@ async function fromWiki(wiki, lang, mode) {
   const found = await wikidata.itemsForWikiTitles([...titles.keys()], wiki, lang);
   return Object.entries(found)
     .filter(([title]) => scores.has(title))
-    .map(([title, item]) => ({ ...item, score: scores.get(title) }));
+    .map(([title, item]) => ({
+      ...item,
+      score: scores.get(title) * (mode === 'spike' ? recency(item.firstDate || item.year) : 1),
+    }));
 }
 
 // [{ imdb, qid, name, year, score }] most-read first.
@@ -110,11 +124,12 @@ async function trending(type, lang, mode = 'trending') {
     } else out.set(item.imdb, { ...item, score: item.score * weight, editions: 1, local });
   }
   // A title that trends in only one foreign edition is a local story there
-  // (a Bollywood release read mostly on English Wikipedia, a Dutch TV show):
-  // keep it only if it also trends elsewhere or in the viewer's own edition.
-  return [...out.values()]
-    .filter((x) => x.editions >= 2 || x.local)
-    .sort((a, b) => b.score - a.score);
+  // (a Bollywood release read mostly on English Wikipedia, a Dutch TV show).
+  // Titles that trend in two editions or in the viewer's own come first;
+  // single-edition ones follow, so the list keeps loading when scrolled.
+  const strong = (x) => x.editions >= 2 || x.local;
+  const all = [...out.values()].sort((a, b) => b.score - a.score);
+  return [...all.filter(strong), ...all.filter((x) => !strong(x))];
 }
 
-module.exports = { trending, spike };
+module.exports = { trending, spike, recency };
