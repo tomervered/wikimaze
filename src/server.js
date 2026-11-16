@@ -107,8 +107,16 @@ async function route(req, res) {
 // copy and Stremio never waits for a cold build (Trending takes 20-30 s).
 // Run daily by the cron in vercel.json; harmless to call by hand.
 const WARM_LANGS = ['en', 'he'];
-const WARM_FIRST = ['movie/wikimaze-trending', 'movie/wikimaze-popular', 'series/wikimaze-airing'];
-const WARM_AFTER = ['series/wikimaze-trending']; // built together with the movie list
+// Every catalog in the manifest that has no required extra.
+const WARM_FIRST = [
+  'movie/wikimaze-trending',
+  'movie/wikimaze-popular',
+  'series/wikimaze-classics',
+  'series/wikimaze-airing',
+  'series/wikimaze-hot',
+];
+// Built from the same Wikipedia data as movie trending, so they go second.
+const WARM_AFTER = ['series/wikimaze-trending', 'movie/wikimaze-hot'];
 
 async function warm(origin) {
   const out = {};
