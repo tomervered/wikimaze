@@ -24,7 +24,7 @@ const MAX_ITEMS = 2000;
 const CLASSICS_POOL = 3000;
 
 // The catalogs built here, by "type/id". Order matters only for the build
-// script: series Trending and movie Very Trending reuse the movie Trending
+// script: series Trending and movie Surging reuse the movie Trending
 // data, so they come after it.
 const LISTS = [
   'movie/wikimaze-trending',
@@ -83,7 +83,7 @@ async function localNames(imdbs, lang) {
   }
 }
 
-// Very Trending series: a zipper of two orders, one title from each in
+// Surging series: a zipper of two orders, one title from each in
 // turn: TVmaze's plain popularity weight (as in Airing now) and the same
 // weight times a premiere-date weight (two-year half-life, floor 0.5) that
 // favours new shows. Each show is listed once.

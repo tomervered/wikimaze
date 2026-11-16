@@ -157,8 +157,8 @@ test('genre filters: option text in either language, on every list', async () =>
       [
         'WikiMovies - Trending',
         'WikiSeries - Trending',
-        'WikiMovies - Very Trending',
-        'WikiSeries - Very Trending',
+        'WikiMovies - Surging',
+        'WikiSeries - Surging',
         'WikiMovies - Classics',
         'WikiSeries - Classics',
         'WikiSeries - Airing now',
@@ -246,16 +246,18 @@ test('releasedBy: out, out within two weeks, or a past year', () => {
   assert.ok(!wikidata.releasedBy({ year: String(year) }));
 });
 
-test('spike: newest day against the average of the days before', () => {
-  const { spike } = require('../src/trending');
+test('surge: steady climbers rank, big steady titles and one-day blips do not', () => {
+  const { surge } = require('../src/trending');
+  const day = (o) => new Map(Object.entries(o));
   const days = [
-    new Map([['New', 0.3], ['Steady', 0.2], ['Fading', 0.1]]),
-    new Map([['Steady', 0.2], ['Fading', 0.4]]),
-    new Map([['Steady', 0.2], ['Fading', 0.4]]),
+    day({ Small: 0.04, Big: 0.42, Blip: 0.3, Gone: 0.01 }),
+    day({ Small: 0.03, Big: 0.40, Blip: 0.01 }),
+    day({ Small: 0.01, Big: 0.40, Blip: 0.01, Gone: 0.2 }),
+    day({ Small: 0.01, Big: 0.38, Blip: 0.01, Gone: 0.2 }),
   ];
-  const s = spike(days);
-  assert.deepStrictEqual([...s.keys()], ['New']);
-  assert.ok(Math.abs(s.get('New') - 0.3) < 1e-9);
+  const s = surge(days);
+  assert.deepStrictEqual([...s.keys()], ['Small']);
+  assert.ok(s.get('Small') > 0);
 });
 
 test('recency: new titles weigh 1, a year-old one about 0.55, old ones the floor', () => {

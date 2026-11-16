@@ -14,8 +14,8 @@ Every list has a genre filter. Search runs through the two Classics lists.
 | List | Source |
 | --- | --- |
 | WikiMovies / WikiSeries - Trending | The most-read films and shows on Wikipedia over the last 3 days, across six large language editions plus the install's own (Wikimedia page-view statistics, CC0). A title must trend in at least two editions, or in the install's own language |
-| WikiMovies - Very Trending | **Placeholder.** Films whose Wikipedia readership jumped most on the newest day compared with the week before. To be replaced by a non-Wikipedia source once a legal, commercially usable one exists (IMDb data is paid-only; TMDB and Trakt are non-commercial) |
-| WikiSeries - Very Trending | TVmaze: shows with a new episode in the last two days (US, UK, Israel, streaming), by TVmaze's popularity weight |
+| WikiMovies - Surging | **Placeholder.** Films whose Wikipedia readership jumped most on the newest day compared with the week before. To be replaced by a non-Wikipedia source once a legal, commercially usable one exists (IMDb data is paid-only; TMDB and Trakt are non-commercial) |
+| WikiSeries - Surging | TVmaze: shows with a new episode in the last two days (US, UK, Israel, streaming), by TVmaze's popularity weight |
 | WikiMovies / WikiSeries - Classics | The best-known titles of all time on Wikidata, ranked by how many Wikipedia editions have an article on them |
 | WikiSeries - Airing now | TVmaze: shows with an episode in the last 7 days on US/UK TV or streaming, by TVmaze's popularity weight |
 

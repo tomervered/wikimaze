@@ -48,7 +48,7 @@ function configurePage(origin, lang) {
   <fieldset id="lists" style="margin-top:16px;border:0;padding:0;display:grid;gap:6px">
     <legend style="font-weight:600;margin-bottom:6px">Lists to show</legend>
     <label style="font-weight:400"><input type="checkbox" id="l-t" value="t" checked style="width:auto"> Trending</label>
-    <label style="font-weight:400"><input type="checkbox" id="l-v" value="v" checked style="width:auto"> Very Trending</label>
+    <label style="font-weight:400"><input type="checkbox" id="l-v" value="v" checked style="width:auto"> Surging</label>
     <label style="font-weight:400"><input type="checkbox" id="l-c" value="c" checked style="width:auto"> Classics</label>
     <label style="font-weight:400"><input type="checkbox" id="l-a" value="a" checked style="width:auto"> Airing now (series)</label>
   </fieldset>

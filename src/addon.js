@@ -51,11 +51,11 @@ function fullManifest(lang) {
     catalogs: [
       { type: 'movie', id: 'wikimaze-trending', name: 'WikiMovies - Trending', extra: [genreExtra('movie', lang), { name: 'skip' }] },
       { type: 'series', id: 'wikimaze-trending', name: 'WikiSeries - Trending', extra: [genreExtra('series', lang), { name: 'skip' }] },
-      // Very Trending movies: Wikipedia one-day spike, a PLACEHOLDER source
-      // (see trending.js). Very Trending series: TVmaze, shows with a new
+      // Surging movies: Wikipedia readership climb, a PLACEHOLDER source
+      // (see trending.js). Surging series: TVmaze, shows with a new
       // episode in the last two days by TVmaze's popularity weight.
-      { type: 'movie', id: 'wikimaze-hot', name: 'WikiMovies - Very Trending', extra: [genreExtra('movie', lang), { name: 'skip' }] },
-      { type: 'series', id: 'wikimaze-hot', name: 'WikiSeries - Very Trending', extra: [genreExtra('series', lang, 'tvmaze'), { name: 'skip' }] },
+      { type: 'movie', id: 'wikimaze-hot', name: 'WikiMovies - Surging', extra: [genreExtra('movie', lang), { name: 'skip' }] },
+      { type: 'series', id: 'wikimaze-hot', name: 'WikiSeries - Surging', extra: [genreExtra('series', lang, 'tvmaze'), { name: 'skip' }] },
       {
         type: 'movie',
         id: 'wikimaze-popular',

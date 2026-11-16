@@ -6,7 +6,7 @@
 // top-1000 total, so big editions don't drown small ones; the viewer's own
 // edition counts three times, so Israeli hits rank high in the Hebrew install.
 //
-// The same lists also give Very Trending movies (see spike() below). That
+// The same lists also give Surging movies (see surge() below). That
 // use is a PLACEHOLDER: Tomer wants a non-Wikipedia source for it once a
 // legal, commercially usable one exists (IMDb data is paid-only, TMDB and
 // Trakt are non-commercial).
@@ -45,7 +45,9 @@ async function dailyShares(wiki) {
     .map((list) => {
       const kept = list.filter((a) => !SKIP.test(a.article));
       const total = kept.reduce((n, a) => n + a.views, 0) || 1;
-      return new Map(kept.map((a) => [a.article.replace(/_/g, ' '), a.views / total]));
+      const m = new Map(kept.map((a) => [a.article.replace(/_/g, ' '), a.views / total]));
+      m.floor = kept.length ? kept[kept.length - 1].views / total : 0;
+      return m;
     });
 }
 
@@ -58,21 +60,38 @@ function readership(days) {
   return out;
 }
 
-// Very Trending (PLACEHOLDER until a non-Wikipedia source is chosen): how
-// much a title's share on the newest day beats its average over the days
-// before. A title new to the top list jumps by its whole share.
-function spike(days) {
-  const [today, ...before] = days;
+// Surging (PLACEHOLDER source until a non-Wikipedia one is chosen): titles
+// whose readership is climbing, not just big. The old one-day jump
+// (share today minus the week's average) let any huge title with a small
+// wobble beat a small title that tripled, and one news story (a death, a TV
+// airing) could top it for a day. Now:
+//   r = mean share over the newest SURGE_DAYS days
+//   b = mean share over the days before; a day the title missed the top
+//       list counts as half that day's cut-off share (it was below it)
+//   score = log2(r / b) * sqrt(r), kept only when r >= SURGE_MIN * b
+//       and every one of the newest days beats b (a climb, not one blip)
+// log2(r/b) is the growth (1 = doubled); sqrt(r) keeps a tiny article that
+// went from 10 to 40 views from outranking a real hit that doubled.
+const SURGE_DAYS = 2;
+const SURGE_MIN = 1.5;
+
+function surge(days) {
+  const recent = days.slice(0, SURGE_DAYS);
+  const before = days.slice(SURGE_DAYS);
   const out = new Map();
-  if (!today || !before.length) return out;
-  for (const [t, v] of today) {
-    const base = before.reduce((n, d) => n + (d.get(t) || 0), 0) / before.length;
-    if (v > base) out.set(t, v - base);
+  if (recent.length < SURGE_DAYS || !before.length) return out;
+  const floorOf = (d) => (d.floor || Math.min(...d.values())) / 2;
+  for (const t of recent[0].keys()) {
+    const shares = recent.map((d) => d.get(t) || floorOf(d));
+    const r = shares.reduce((n, v) => n + v, 0) / shares.length;
+    const b = before.reduce((n, d) => n + (d.get(t) || floorOf(d)), 0) / before.length;
+    if (r < SURGE_MIN * b || shares.some((v) => v <= b)) continue;
+    out.set(t, Math.log2(r / b) * Math.sqrt(r));
   }
   return out;
 }
 
-// Very Trending favours new titles: a score is multiplied by a weight that
+// Series lists favour new titles: a score is multiplied by a weight that
 // halves for every `halfLife` days since release and never drops below
 // `floor` (a classic in the news still shows, just lower). Unknown date: floor.
 function recency(date, halfLife = 365, floor = 0.1) {
@@ -83,7 +102,7 @@ function recency(date, halfLife = 365, floor = 0.1) {
   return floor + (1 - floor) * 0.5 ** (age / halfLife);
 }
 
-// Very Trending movies use Tomer's U-shaped age weight: it halves every two
+// Surging movies use Tomer's U-shaped age weight: it halves every two
 // years at first, then climbs back slowly (toward ~0.35 for very old films)
 // so a resurgence of interest in an old film still counts.
 //   W(a) = 0.10 + 0.90 * 2^(-a / 2y) + 0.25 * (1 - 2^(-a / 12y))
@@ -101,7 +120,7 @@ async function fromWiki(wiki, lang, mode) {
   const days = await dailyShares(wiki);
   const titles = readership(days);
   if (!titles.size) return [];
-  const scores = mode === 'spike' ? spike(days) : titles;
+  const scores = mode === 'spike' ? surge(days) : titles;
   const found = await wikidata.itemsForWikiTitles([...titles.keys()], wiki, lang);
   return Object.entries(found)
     .filter(([title]) => scores.has(title))
@@ -144,4 +163,4 @@ async function trending(type, lang, mode = 'trending') {
   return [...all.filter(strong), ...all.filter((x) => !strong(x))];
 }
 
-module.exports = { trending, spike, recency, movieAgeWeight };
+module.exports = { trending, surge, recency, movieAgeWeight };
