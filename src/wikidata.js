@@ -98,7 +98,7 @@ async function classicsBlock(type, lang, genreIds, index) {
   const genre = genreIds ? ` haswbstatement:${genreIds.map((g) => `P136=${g}|P31=${g}`).join('|')}` : '';
   const srsearch = `haswbstatement:P345 haswbstatement:${classes}${genre}`;
   const rows = await sparql(
-    `SELECT ?item ?imdb ?label ?date ?links WHERE {
+    `SELECT ?item ?imdb ?label ?date ?links ?genre WHERE {
       SERVICE wikibase:mwapi {
         bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "Search";
                         mwapi:srsearch ${str(srsearch)}; mwapi:srsort "incoming_links_desc";
@@ -108,13 +108,16 @@ async function classicsBlock(type, lang, genreIds, index) {
       }
       ?item wdt:P345 ?imdb; wikibase:sitelinks ?links. FILTER(STRSTARTS(?imdb, "tt"))
       OPTIONAL { ?item wdt:${type === 'movie' ? 'P577' : 'P580'} ?date. }
+      OPTIONAL { ?item wdt:P136|wdt:P31 ?genre. }
       ${labelClause(lang)}
     }`,
     12 * 3600,
     20000
   );
   const links = new Map(rows.map((r) => [r.imdb.value, Number(r.links.value)]));
+  const genresOf = genreIdsByImdb(rows);
   const items = dedupeRows(rows)
+    .map((x) => ({ ...x, genres: genresOf.get(x.imdb) || [] }))
     .filter((x) => type !== 'movie' || releasedBy(x))
     .sort((p, q) => links.get(q.imdb) - links.get(p.imdb));
   return { items, last: new Set(rows.map((r) => r.item.value)).size < POPULAR_POOL / 2 };
@@ -141,6 +144,19 @@ async function classics(type, lang, skip = 0, pageSize = 100, genreIds = null) {
     }
   }
   return out.slice(skip, skip + pageSize);
+}
+
+// IMDb id -> [Wikidata ids of its genres and classes], from rows with ?genre.
+function genreIdsByImdb(rows) {
+  const out = new Map();
+  for (const r of rows) {
+    if (!r.genre) continue;
+    const list = out.get(r.imdb.value) || [];
+    const id = qid(r.genre.value);
+    if (!list.includes(id)) list.push(id);
+    out.set(r.imdb.value, list);
+  }
+  return out;
 }
 
 // The query service flattens a year-only date to January 1st, so a Jan 1
