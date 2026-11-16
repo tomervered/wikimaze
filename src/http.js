@@ -13,6 +13,9 @@ const USER_AGENT =
 const MAX_PER_HOST = { 'query.wikidata.org': 5, 'api.tvmaze.com': 6 };
 const DEFAULT_PER_HOST = 4;
 const DEFAULT_TIMEOUT = 12000;
+// The snapshot build (scripts/build-snapshot.js) is not answering anyone and
+// can wait longer: it multiplies every time limit by this.
+const TIMEOUT_SCALE = Number(process.env.HTTP_TIMEOUT_SCALE) || 1;
 const MAX_CACHE_ENTRIES = 5000;
 
 const cache = new Map(); // url -> { expires, promise }
@@ -97,7 +100,7 @@ function getJson(url, { ttl = 6 * 3600, accept = 'application/json', body, timeo
   const hit = cache.get(key);
   if (hit && hit.expires > now) return hit.promise;
 
-  const promise = fetchOnce(url, accept, body, timeout);
+  const promise = fetchOnce(url, accept, body, timeout * TIMEOUT_SCALE);
   cache.set(key, { expires: now + ttl * 1000, promise });
   promise.catch(() => cache.delete(key));
 

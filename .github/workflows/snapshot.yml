@@ -36,6 +36,7 @@ jobs:
         env:
           PREVIOUS_DIR: previous
           SNAPSHOT_URL: 'off'
+          HTTP_TIMEOUT_SCALE: '4'
         run: node scripts/build-snapshot.js out/snapshot en he
       - name: Publish to the data branch
         run: |
