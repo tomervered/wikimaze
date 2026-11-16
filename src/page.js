@@ -60,6 +60,7 @@ function configurePage(origin, lang) {
   </div>
   <small>Data: <a href="https://www.wikidata.org/">Wikidata</a> (CC0) and
   <a href="https://www.tvmaze.com/">TVmaze</a> (CC BY-SA 4.0). Artwork is linked from TVmaze and metahub, not stored here.</small>
+  <small><strong>Privacy.</strong> WikiMaze has no accounts, cookies, analytics or tracking, and it stores nothing about you. Lists are built from public, anonymous totals (Wikipedia page views, Wikidata, TVmaze). The host, Vercel, keeps short-lived request logs (including IP addresses) to run and secure the service; see <a href="https://vercel.com/legal/privacy-policy">Vercel's privacy policy</a>. Your choices on this page stay in the link you install.</small>
 </div></main>
 <script>
   const origin = ${JSON.stringify(origin)};
