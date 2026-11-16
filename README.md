@@ -50,3 +50,7 @@ Images are linked, never stored. Series use TVmaze's images; movies use Stremio'
 ## Credits
 
 TV data from [TVmaze](https://www.tvmaze.com), licensed CC BY-SA 4.0. Movie data from [Wikidata](https://www.wikidata.org), CC0.
+
+## Privacy
+
+WikiMaze has no accounts, cookies, analytics or tracking, and stores nothing about the people who use it. Lists are built from public, anonymous totals: Wikipedia page views, Wikidata and TVmaze. Vercel, the host, keeps short-lived request logs that include IP addresses so it can run and secure the service; see [Vercel's privacy policy](https://vercel.com/legal/privacy-policy). The language and list choices made on the install page live only in the install link.
