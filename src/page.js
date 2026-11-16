@@ -45,6 +45,13 @@ function configurePage(origin, lang) {
   <p>Movie and series details from Wikidata and TVmaze, with titles in your language.</p>
   <label for="lang">Language</label>
   <select id="lang">${options}</select>
+  <fieldset id="lists" style="margin-top:16px;border:0;padding:0;display:grid;gap:6px">
+    <legend style="font-weight:600;margin-bottom:6px">Lists to show</legend>
+    <label style="font-weight:400"><input type="checkbox" id="l-t" value="t" checked style="width:auto"> Trending</label>
+    <label style="font-weight:400"><input type="checkbox" id="l-v" value="v" checked style="width:auto"> Very Trending</label>
+    <label style="font-weight:400"><input type="checkbox" id="l-c" value="c" checked style="width:auto"> Classics</label>
+    <label style="font-weight:400"><input type="checkbox" id="l-a" value="a" checked style="width:auto"> Airing now (series)</label>
+  </fieldset>
   <label for="url" style="margin-top:16px">Manifest link</label>
   <input id="url" readonly>
   <div class="row">
@@ -59,11 +66,15 @@ function configurePage(origin, lang) {
   const sel = document.getElementById('lang'), url = document.getElementById('url'), install = document.getElementById('install');
   function update() {
     const l = sel.value;
-    const link = origin + (l === 'en' ? '' : '/' + l) + '/manifest.json';
+    const picked = [...document.querySelectorAll('#lists input:checked')].map((c) => c.value).join('');
+    // All four (the default) needs no suffix; none picked falls back to all.
+    const prefix = picked && picked.length < 4 ? l + '.' + picked : (l === 'en' ? '' : l);
+    const link = origin + (prefix ? '/' + prefix : '') + '/manifest.json';
     url.value = link;
     install.href = link.replace(/^https?:/, 'stremio:');
   }
   sel.addEventListener('change', update);
+  document.getElementById('lists').addEventListener('change', update);
   document.getElementById('copy').addEventListener('click', () => { url.select(); navigator.clipboard && navigator.clipboard.writeText(url.value); });
   update();
 </script></body></html>`;

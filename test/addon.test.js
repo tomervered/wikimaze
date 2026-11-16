@@ -275,3 +275,13 @@ test('movie age weight: falls for recent years, rises again for old films', () =
   assert.ok(Math.abs(movieAgeWeight(ago(2)) - 0.58) < 0.01);
   assert.ok(movieAgeWeight(ago(10)) < movieAgeWeight(ago(40)));
 });
+
+test('install link picks lists: "he.tc" keeps Trending and Classics only', () => {
+  const m = addon.manifest('he', 'tc');
+  assert.deepStrictEqual(
+    [...new Set(m.catalogs.map((c) => c.id))].sort(),
+    ['wikimaze-classics', 'wikimaze-popular', 'wikimaze-trending']
+  );
+  assert.notStrictEqual(m.id, addon.manifest('he').id);
+  assert.strictEqual(addon.manifest('he').catalogs.length, 7);
+});

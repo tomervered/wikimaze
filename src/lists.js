@@ -38,13 +38,21 @@ const LISTS = [
 
 const metahub = (kind, imdb, size = 'medium') => `https://images.metahub.space/${kind}/${size}/${imdb}/img`;
 
+// "2008-2013" for an ended series, "2019-" for one still running, the year
+// alone for a film or a one-year series.
+function years(start, end, running) {
+  if (!start) return undefined;
+  if (running) return `${start}-`;
+  return end && end !== start ? `${start}-${end}` : start;
+}
+
 function fromWikidata(type, r) {
   return {
     id: r.imdb,
     type,
     name: r.name,
     poster: metahub('poster', r.imdb),
-    releaseInfo: r.year,
+    releaseInfo: type === 'series' ? years(r.year, r.endYear, !r.endYear) : r.year,
     g: genres.keysFor({ ids: r.genres || [] }),
   };
 }
@@ -56,7 +64,11 @@ function fromTvmaze(show, localName) {
     type: 'series',
     name: localName || show.name,
     poster: tvmaze.image(show.image, 'medium') || metahub('poster', imdb),
-    releaseInfo: show.premiered ? show.premiered.slice(0, 4) : undefined,
+    releaseInfo: years(
+      show.premiered && show.premiered.slice(0, 4),
+      show.ended && show.ended.slice(0, 4),
+      show.status === 'Running' || show.status === 'In Development'
+    ),
     genres: show.genres,
     g: genres.keysFor({ maze: show.genres || [] }),
   };

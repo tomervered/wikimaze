@@ -98,7 +98,7 @@ async function classicsBlock(type, lang, genreIds, index) {
   const genre = genreIds ? ` haswbstatement:${genreIds.map((g) => `P136=${g}|P31=${g}`).join('|')}` : '';
   const srsearch = `haswbstatement:P345 haswbstatement:${classes}${genre}`;
   const rows = await sparql(
-    `SELECT ?item ?imdb ?label ?date ?links ?genre WHERE {
+    `SELECT ?item ?imdb ?label ?date ?links ?genre ?end WHERE {
       SERVICE wikibase:mwapi {
         bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "Search";
                         mwapi:srsearch ${str(srsearch)}; mwapi:srsort "incoming_links_desc";
@@ -108,6 +108,7 @@ async function classicsBlock(type, lang, genreIds, index) {
       }
       ?item wdt:P345 ?imdb; wikibase:sitelinks ?links. FILTER(STRSTARTS(?imdb, "tt"))
       OPTIONAL { ?item wdt:${type === 'movie' ? 'P577' : 'P580'} ?date. }
+      ${type === 'series' ? 'OPTIONAL { ?item wdt:P582 ?end. }' : ''}
       OPTIONAL { ?item wdt:P136|wdt:P31 ?genre. }
       ${labelClause(lang)}
     }`,
@@ -178,10 +179,12 @@ function dedupeRows(rows) {
       // Several dates: keep the earliest (the first release, not a re-release).
       if (year && (!prev.year || year < prev.year)) prev.year = year;
       if (exact && (!prev.firstDate || exact < prev.firstDate)) prev.firstDate = exact;
+      if (r.end && (!prev.endYear || r.end.value.slice(0, 4) > prev.endYear)) prev.endYear = r.end.value.slice(0, 4);
       continue;
     }
     const name = r.label && !isQidLabel(item, r.label.value) ? cleanTitle(r.label.value) : undefined;
-    out.set(imdb, { imdb, qid: item, name, year, firstDate: exact });
+    const endYear = r.end ? r.end.value.slice(0, 4) : undefined;
+    out.set(imdb, { imdb, qid: item, name, year, firstDate: exact, endYear });
   }
   return [...out.values()].filter((x) => x.name);
 }
@@ -333,12 +336,13 @@ async function itemsForWikiTitles(titles, wiki, lang) {
   const film = new Set(FILM_CLASSES);
   const classes = [...FILM_CLASSES, ...SERIES_CLASSES].map((c) => 'wd:' + c).join(' ');
   const rows = await sparql(
-    `SELECT ?title ?item ?cls ?imdb ?label ?date ?genre WHERE {
+    `SELECT ?title ?item ?cls ?imdb ?label ?date ?end ?genre WHERE {
       VALUES ?title { ${titles.map((t) => str(t) + '@' + wiki).join(' ')} }
       ?article schema:name ?title; schema:isPartOf <https://${wiki}.wikipedia.org/>; schema:about ?item.
       VALUES ?cls { ${classes} }
       ?item wdt:P31 ?cls; wdt:P345 ?imdb. FILTER(STRSTARTS(?imdb, "tt"))
       OPTIONAL { ?item wdt:P577|wdt:P580 ?date. }
+      OPTIONAL { ?item wdt:P582 ?end. }
       OPTIONAL { ?item wdt:P136 ?genre. }
       ${labelClause(lang)}
     }`,

@@ -20,7 +20,19 @@ function genreExtra(type, lang, source) {
   return { name: 'genre', options: genres.options(type, lang, source) };
 }
 
-function manifest(lang) {
+// Lists a viewer can switch on or off on the install page; the letters go in
+// the install link ("he.tc" = Trending and Classics, Hebrew).
+const LIST_FLAGS = { t: 'wikimaze-trending', v: 'wikimaze-hot', c: ['wikimaze-popular', 'wikimaze-classics'], a: 'wikimaze-airing' };
+
+function manifest(lang, lists = null) {
+  const m = fullManifest(lang);
+  if (!lists) return m;
+  const keep = new Set([...lists].flatMap((f) => [].concat(LIST_FLAGS[f] || [])));
+  const catalogs = m.catalogs.filter((c) => keep.has(c.id));
+  return { ...m, id: `${m.id}.${[...lists].sort().join('')}`, catalogs };
+}
+
+function fullManifest(lang) {
   const suffix = lang === 'en' ? '' : ` (${lang})`;
   return {
     id: 'community.wikimaze' + (lang === 'en' ? '' : '.' + lang),
@@ -269,4 +281,10 @@ async function meta(type, id, lang) {
   return null;
 }
 
-module.exports = { manifest, catalog, meta, clearLists: () => built.clear() };
+module.exports = {
+  LIST_FLAGS,
+  manifest,
+  catalog,
+  meta,
+  clearLists: () => built.clear(),
+};

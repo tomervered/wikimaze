@@ -9,7 +9,9 @@ const http = require('node:http');
 const addon = require('./addon');
 const { configurePage } = require('./page');
 
-const LANG = /^[a-z]{2,3}$/;
+// First path segment: the language, optionally with the chosen lists after a
+// dot, e.g. "he" or "he.tc" (see addon.LIST_FLAGS).
+const LANG = /^([a-z]{2,3})(?:\.([a-z]+))?$/;
 const DAY = 86400;
 
 // maxAge: how long Stremio and Vercel's CDN treat a response as fresh.
@@ -62,8 +64,11 @@ async function route(req, res) {
   }
   let parts = path.split('/').filter(Boolean);
   let lang = 'en';
-  if (parts.length && LANG.test(parts[0])) {
-    lang = parts[0];
+  let lists = null;
+  const prefix = parts.length && parts[0].match(LANG);
+  if (prefix) {
+    lang = prefix[1];
+    lists = prefix[2] || null;
     parts = parts.slice(1);
   }
 
@@ -73,7 +78,7 @@ async function route(req, res) {
     return send(res, 200, configurePage(origin, lang), { type: 'text/html', maxAge: 3600 });
   }
   if (parts.length === 1 && parts[0] === 'manifest.json') {
-    return send(res, 200, addon.manifest(lang), { maxAge: 3600 });
+    return send(res, 200, addon.manifest(lang, lists), { maxAge: 3600 });
   }
   if (parts.length === 1 && parts[0] === 'health') {
     return send(res, 200, { ok: true });
