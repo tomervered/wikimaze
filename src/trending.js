@@ -1,12 +1,10 @@
 // Trending = what people are reading about on Wikipedia right now.
 // Wikimedia publishes the 1000 most-viewed articles of each day per language
-// edition (CC0). The last three days are summed and mapped to Wikidata
-// items; only films or series with an IMDb id are kept.
-//
-// English Wikipedia sets the global trend. For another language (the Hebrew
-// install) that language's Wikipedia is mixed in with equal weight, so local
-// hits show up even though the Hebrew edition has far fewer readers: each
-// edition's views count as a share of that edition's own top-1000 total.
+// edition (CC0). For six large editions plus the viewer's own, the last three
+// days are summed and mapped to Wikidata items; only films and series with
+// an IMDb id are kept. Each edition's views count as a share of its own
+// top-1000 total, so big editions don't drown small ones; the viewer's own
+// edition counts three times, so Israeli hits rank high in the Hebrew install.
 
 const { getJson } = require('./http');
 const wikidata = require('./wikidata');
@@ -57,16 +55,35 @@ async function fromWiki(wiki, lang) {
 }
 
 // [{ imdb, qid, name, year, score }] most-read first.
+const GLOBAL = (process.env.TREND_WIKIS || 'en,de,fr,es,it,ja').split(',');
+const LOCAL_WEIGHT = Number(process.env.TREND_LOCAL_WEIGHT || 3);
+
 async function trending(type, lang) {
-  const wikis = lang === 'en' ? ['en'] : ['en', lang];
-  const lists = await Promise.all(wikis.map((w) => fromWiki(w, lang).catch(() => [])));
+  const wikis = [...new Set([...GLOBAL, lang])];
+  const lists = await Promise.all(
+    wikis.map((w) =>
+      fromWiki(w, lang)
+        .then((items) => items.map((x) => ({ ...x, wiki: w })))
+        .catch(() => [])
+    )
+  );
   const out = new Map();
   for (const item of lists.flat().filter((x) => x.type === type)) {
+    const local = item.wiki === lang && lang !== 'en';
+    const weight = local ? LOCAL_WEIGHT : 1;
     const prev = out.get(item.imdb);
-    if (prev) prev.score += item.score;
-    else out.set(item.imdb, { ...item });
+    if (prev) {
+      prev.score += item.score * weight;
+      prev.editions++;
+      prev.local = prev.local || local;
+    } else out.set(item.imdb, { ...item, score: item.score * weight, editions: 1, local });
   }
-  return [...out.values()].sort((a, b) => b.score - a.score);
+  // A title that trends in only one foreign edition is a local story there
+  // (a Bollywood release read mostly on English Wikipedia, a Dutch TV show):
+  // keep it only if it also trends elsewhere or in the viewer's own edition.
+  return [...out.values()]
+    .filter((x) => x.editions >= 2 || x.local)
+    .sort((a, b) => b.score - a.score);
 }
 
 module.exports = { trending };

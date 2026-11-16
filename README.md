@@ -11,7 +11,7 @@ Every title is keyed by its IMDb id (`tt…`), so stream add-ons still match it,
 
 | Catalog | Source |
 | --- | --- |
-| Trending (movies, series) | The most-read films and shows on Wikipedia over the last 3 days (Wikimedia page-view statistics). The Hebrew install mixes Hebrew Wikipedia in with equal weight, so Israeli hits show up next to global ones |
+| Trending (movies, series) | The most-read films and shows on Wikipedia over the last 3 days, across six large language editions plus the install's own (Wikimedia page-view statistics). A title must trend in at least two editions, or in the install's own language, so one edition's local hit doesn't top the global list |
 | Popular movies | Films first released this year or last, ranked by how many Wikipedia editions have an article on them. With a genre picked: that genre's films from all years, same ranking |
 | Airing now (series) | Shows with an episode in the last 7 days on US/UK TV or streaming, ranked by TVmaze's popularity weight, optionally filtered by TVmaze genre |
 | Search (both) | Wikidata full-text search, which matches titles in every language (searching "שובר שורות" in the English install finds Breaking Bad), plus TVmaze search for series |

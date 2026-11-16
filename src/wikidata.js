@@ -321,7 +321,8 @@ async function itemsForWikiTitles(titles, wiki, lang) {
       OPTIONAL { ?item wdt:P577|wdt:P580 ?date. }
       ${labelClause(lang)}
     }`,
-    6 * 3600
+    6 * 3600,
+    45000 // hundreds of titles: slower than the default deadline
   );
   const byImdb = new Map(dedupeRows(rows).map((x) => [x.imdb, x]));
   const out = {};

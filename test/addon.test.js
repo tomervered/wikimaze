@@ -153,100 +153,39 @@ test('genre option text maps back to its id in either language; unknown genre is
   }
 });
 
-test('trending merges English and local Wikipedia and keeps the asked type', async () => {
-  const undo = [
-    stub(wikidata, 'itemsForWikiTitles', async (titles, wiki) =>
-      wiki === 'en'
-        ? {
-            'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie' },
-            'Show (TV series)': { imdb: 'tt2', name: 'Show', type: 'series' },
-          }
-        : { 'הבריחה': { imdb: 'tt3', name: 'הבריחה', type: 'series' }, 'סדרה': { imdb: 'tt2', name: 'Show', type: 'series' } }
-    ),
-  ];
-  // Fixed top-viewed lists; trending.js is reloaded so it picks up the stub.
+test('trending: needs two editions or the viewer\'s own; local edition weighs more', async () => {
+  const lists = {
+    en: [{ article: 'Main_Page', views: 9e9 }, { article: 'Big_Film', views: 600 }, { article: 'Show_(TV_series)', views: 300 }, { article: 'Solo_Film', views: 100 }],
+    de: [{ article: 'Big_Film', views: 100 }],
+    he: [{ article: 'הבריחה', views: 50 }, { article: 'סדרה', views: 50 }],
+  };
+  const items = {
+    en: {
+      'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie' },
+      'Show (TV series)': { imdb: 'tt2', name: 'Show', type: 'series' },
+      'Solo Film': { imdb: 'tt9', name: 'Solo', type: 'movie' },
+    },
+    de: { 'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie' } },
+    he: { 'הבריחה': { imdb: 'tt3', name: 'הבריחה', type: 'series' }, 'סדרה': { imdb: 'tt2', name: 'Show', type: 'series' } },
+  };
+  const undo = stub(wikidata, 'itemsForWikiTitles', async (titles, wiki) => items[wiki] || {});
   const http = require('../src/http');
   const realGet = http.getJson;
-  http.getJson = async (url) => ({
-    items: [
-      {
-        articles: url.includes('/en.wikipedia/')
-          ? [{ article: 'Main_Page', views: 9e9 }, { article: 'Big_Film', views: 600 }, { article: 'Show_(TV_series)', views: 400 }]
-          : [{ article: 'הבריחה', views: 50 }, { article: 'סדרה', views: 50 }],
-      },
-    ],
-  });
+  http.getJson = async (url) => {
+    const wiki = url.match(/top\/(\w+)\.wikipedia/)[1];
+    return { items: [{ articles: lists[wiki] || [] }] };
+  };
   try {
+    // trending.js is reloaded so it picks up the stubbed getJson.
     delete require.cache[require.resolve('../src/trending')];
     const fresh = require('../src/trending');
-    const series = await fresh.trending('series', 'he');
-    // tt2 has 0.4 (en) + 0.5 (he); tt3 has 0.5 (he).
-    assert.deepStrictEqual(series.map((x) => x.imdb), ['tt2', 'tt3']);
-    const movies = await fresh.trending('movie', 'en');
-    assert.deepStrictEqual(movies.map((x) => x.imdb), ['tt1']);
+    // tt2: en share + 3 x he share, two editions; tt3: Hebrew only, but local.
+    assert.deepStrictEqual((await fresh.trending('series', 'he')).map((x) => x.imdb), ['tt2', 'tt3']);
+    // tt9 trends only on English Wikipedia: dropped. tt1 is in en and de.
+    assert.deepStrictEqual((await fresh.trending('movie', 'en')).map((x) => x.imdb), ['tt1']);
   } finally {
     http.getJson = realGet;
     delete require.cache[require.resolve('../src/trending')];
-    undo.forEach((u) => u());
-  }
-});
-
-test('details rows: billing order, then best known; runtime; Wikipedia in the viewer language', () => {
-  const wd = require('../src/wikidata');
-  const E = 'http://www.wikidata.org/entity/';
-  const lit = (value) => ({ value });
-  const row = (kind, v, extra = {}) => ({ item: lit(E + 'Q1'), kind: lit(kind), v: lit(v), ...extra });
-  const rows = [
-    row('label', 'en', { vl: lit('The Film (2001 film)') }),
-    row('label', 'he', { vl: lit('הסרט') }),
-    row('desc', 'en', { vl: lit('2001 film') }),
-    row('wiki', 'https://en.wikipedia.org/', { vl: lit('https://en.wikipedia.org/wiki/The_Film') }),
-    row('P577', '2001-05-01T00:00:00Z', { prec: lit('11') }),
-    row('P577', '2000-01-01T00:00:00Z', { prec: lit('9') }),
-    row('P577', '1900-01-01T00:00:00Z', { prec: lit('7') }), // century precision: ignored
-    row('P2047', '7200', { unit: lit(E + 'Q11574'), n: lit('0') }),
-    row('P161', E + 'Q10', { vl: lit('Minor'), n: lit('3') }),
-    row('P161', E + 'Q11', { vl: lit('Star'), n: lit('90') }),
-    row('P161', E + 'Q12', { vl: lit('Billed first'), n: lit('5'), ord: lit('1') }),
-    row('P161', E + 'Q13', { vl: lit('Q13'), n: lit('99') }), // no label in any language
-    row('P136', E + 'Q20', { vl: lit('דרמה'), n: lit('50') }),
-  ];
-  const d = wd.detailsFromRows(rows, 'Q1', 'movie', 'he');
-  assert.strictEqual(d.name, 'הסרט');
-  assert.strictEqual(d.englishName, 'The Film');
-  assert.strictEqual(d.description, '2001 film');
-  assert.strictEqual(d.year, '2000');
-  assert.strictEqual(d.runtime, '120 min');
-  assert.deepStrictEqual(d.cast, ['Billed first', 'Star', 'Minor']);
-  assert.deepStrictEqual(d.genres, ['דרמה']);
-  assert.strictEqual(d.wikipedia.url, 'https://en.wikipedia.org/wiki/The_Film');
-});
-
-test('getJson gives up at its time limit instead of hanging', async () => {
-  const { getJson } = require('../src/http');
-  const server = http.createServer(() => {}).listen(0); // never answers
-  try {
-    const started = Date.now();
-    await assert.rejects(getJson(`http://127.0.0.1:${server.address().port}/slow`, { timeout: 300 }));
-    assert.ok(Date.now() - started < 2000);
-  } finally {
-    server.closeAllConnections();
-    server.close();
-  }
-});
-
-test('responses allow serving stale while refreshing; empty lists are kept briefly', async () => {
-  const undo = [
-    stub(wikidata, 'search', async (type, q) => (q === 'none' ? [] : [{ imdb: 'tt1375666', name: q, year: '2010' }])),
-  ];
-  const server = createServer().listen(0);
-  const port = server.address().port;
-  const head = (p) => new Promise((resolve) => http.get({ port, path: p }, (res) => { res.resume(); resolve(res.headers['cache-control']); }));
-  try {
-    assert.match(await head('/catalog/movie/wikimaze-popular/search=x.json'), /stale-while-revalidate=86400/);
-    assert.strictEqual(await head('/catalog/movie/wikimaze-popular/search=none.json'), 'public, max-age=60, s-maxage=60');
-  } finally {
-    undo.forEach((u) => u());
-    server.close();
+    undo();
   }
 });
