@@ -38,7 +38,14 @@ async function route(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { err: 'method' });
 
   const url = new URL(req.url, 'http://localhost');
-  let parts = url.pathname.split('/').filter(Boolean);
+  // On Vercel every path is routed to the one function (vercel.json), and
+  // the original path arrives in ?path= so it survives the rewrite.
+  // Taken raw: a catalog extra like "search=x&skip=100" contains '&', which
+  // searchParams would split off.
+  const routed = req.url.indexOf('?path=');
+  const path = routed >= 0 ? req.url.slice(routed + 6) : url.pathname;
+  let parts = path.split('/').filter(Boolean);
+  if (parts[0] === 'api' && /^index(\.js)?$/.test(parts[1] || '')) parts = parts.slice(2);
   let lang = 'en';
   if (parts.length && LANG.test(parts[0])) {
     lang = parts[0];
