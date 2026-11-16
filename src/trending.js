@@ -83,6 +83,18 @@ function recency(date, halfLife = 365, floor = 0.1) {
   return floor + (1 - floor) * 0.5 ** (age / halfLife);
 }
 
+// Very Trending movies use Tomer's U-shaped age weight: it halves every two
+// years at first, then climbs back slowly (toward ~0.35 for very old films)
+// so a resurgence of interest in an old film still counts.
+//   W(a) = 0.10 + 0.90 * 2^(-a / 2y) + 0.25 * (1 - 2^(-a / 12y))
+function movieAgeWeight(date) {
+  if (!date) return 0.1;
+  const iso = /^\d{4}$/.test(date) ? `${date}-07-01` : date;
+  const years = (Date.now() - Date.parse(iso)) / (365 * 86400000);
+  if (!(years > 0)) return 1;
+  return 0.1 + 0.9 * 0.5 ** (years / 2) + 0.25 * (1 - 0.5 ** (years / 12));
+}
+
 // Films and series together, so one Wikidata query serves both catalogs and
 // both modes (the title list, and so the query, is the same).
 async function fromWiki(wiki, lang, mode) {
@@ -95,7 +107,7 @@ async function fromWiki(wiki, lang, mode) {
     .filter(([title]) => scores.has(title))
     .map(([title, item]) => ({
       ...item,
-      score: scores.get(title) * (mode === 'spike' ? recency(item.firstDate || item.year) : 1),
+      score: scores.get(title) * (mode === 'spike' ? movieAgeWeight(item.firstDate || item.year) : 1),
     }));
 }
 
@@ -132,4 +144,4 @@ async function trending(type, lang, mode = 'trending') {
   return [...all.filter(strong), ...all.filter((x) => !strong(x))];
 }
 
-module.exports = { trending, spike, recency };
+module.exports = { trending, spike, recency, movieAgeWeight };

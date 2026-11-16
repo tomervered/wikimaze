@@ -130,11 +130,18 @@ async function catalog(type, id, extra, lang) {
       (s) => s.externals && s.externals.imdb && (!genre || (s.genres || []).includes(genre.maze))
     );
     if (id === 'wikimaze-hot') {
-      // Release-date weight on the show's premiere, gentler than for movies
-      // (two-year half-life, floor 0.5): a long-running hit with a new
-      // episode still beats a brand-new show nobody watches.
+      // A zipper of two orders, one title from each in turn: TVmaze's plain
+      // popularity weight (as in Airing now) and the same weight times a
+      // premiere-date weight (two-year half-life, floor 0.5) that favours
+      // new shows. Each show is listed once.
+      const plain = [...shows].sort((a, b) => (b.weight || 0) - (a.weight || 0));
       const score = (x) => (x.weight || 0) * recency(x.premiered, 730, 0.5);
-      shows = [...shows].sort((a, b) => score(b) - score(a));
+      const fresh = [...shows].sort((a, b) => score(b) - score(a));
+      const seen = new Set();
+      shows = [];
+      for (let i = 0; i < plain.length; i++) {
+        for (const s of [plain[i], fresh[i]]) if (!seen.has(s.id)) seen.add(s.id) && shows.push(s);
+      }
     }
     const page = shows.slice(skip, skip + PAGE);
     const names = await localNames(page.map((s) => s.externals.imdb), lang);

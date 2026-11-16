@@ -264,3 +264,11 @@ test('recency: new titles weigh 1, a year-old one about 0.55, old ones the floor
   assert.strictEqual(recency(undefined), 0.1);
   assert.ok(Math.abs(recency(ago(730), 730, 0.5) - 0.75) < 0.01);
 });
+
+test('movie age weight: falls for recent years, rises again for old films', () => {
+  const { movieAgeWeight } = require('../src/trending');
+  const ago = (y) => new Date(Date.now() - y * 365 * 86400000).toISOString().slice(0, 10);
+  assert.strictEqual(movieAgeWeight(ago(-0.01)), 1);
+  assert.ok(Math.abs(movieAgeWeight(ago(2)) - 0.58) < 0.01);
+  assert.ok(movieAgeWeight(ago(10)) < movieAgeWeight(ago(40)));
+});
