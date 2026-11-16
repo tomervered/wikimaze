@@ -100,4 +100,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, handler };
+// The module itself is the request handler, so hosts that import this file
+// as a function entry point (Vercel's zero-config Node detection picks up
+// src/server.js) get something they can call.
+module.exports = handler;
+module.exports.handler = handler;
+module.exports.createServer = createServer;
