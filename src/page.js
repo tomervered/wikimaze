@@ -52,7 +52,8 @@ function configurePage(origin, lang, region = '') {
   .card { background:var(--card); border-radius:12px; padding:24px; }
   h1 { font-size:22px; margin:0 0 4px; } p { color:var(--muted); margin:0 0 20px; }
   label { display:block; font-weight:600; margin-bottom:6px; }
-  select, input { width:100%; box-sizing:border-box; font:inherit; padding:8px 10px; border-radius:8px; border:1px solid #8884; background:transparent; color:inherit; }
+  select, input { width:100%; box-sizing:border-box; font:inherit; padding:8px 10px; border-radius:8px; border:1px solid #8884; background:var(--card); color:var(--fg); }
+  option { background:var(--card); color:var(--fg); }
   .row { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
   a.btn, button { flex:1; text-align:center; text-decoration:none; font:inherit; font-weight:600; padding:10px; border-radius:8px; border:0; cursor:pointer; background:var(--accent); color:#fff; }
   button.secondary { background:#8882; color:inherit; }
