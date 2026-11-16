@@ -74,4 +74,21 @@ function lookup(type, text, lang, source = 'wikidata') {
   return available(type, source).find((g) => label(g, lang) === text || g.en === text) || null;
 }
 
-module.exports = { options, lookup };
+// Genre keys a title belongs to, from Wikidata ids (P136 genres and P31
+// classes) and/or TVmaze genre names. Lists store keys, not ids, so a
+// filter is a plain membership test.
+const BY_ID = new Map();
+const BY_MAZE = new Map();
+for (const g of GENRES) {
+  for (const id of g.ids) BY_ID.set(id, [...(BY_ID.get(id) || []), g.key]);
+  if (g.maze) BY_MAZE.set(g.maze, g.key);
+}
+
+function keysFor({ ids = [], maze = [] } = {}) {
+  const out = new Set();
+  for (const id of ids) for (const k of BY_ID.get(id) || []) out.add(k);
+  for (const name of maze) if (BY_MAZE.has(name)) out.add(BY_MAZE.get(name));
+  return [...out];
+}
+
+module.exports = { options, lookup, keysFor };

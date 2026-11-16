@@ -43,6 +43,8 @@ Node 20 or newer, no dependencies. `PORT` and `USER_AGENT` can be set in the env
 
 Wikimedia's action API (`w/api.php`) rate-limits shared IPs hard, so this add-on reads Wikidata only through the query service (SPARQL, with search through its MWAPI bridge) and `Special:EntityData`, which the Wikimedia CDN caches. TVmaze allows 20 calls per 10 seconds; all responses are cached in memory for 1 to 24 hours.
 
+Lists (every catalog without a search term) are not built while Stremio waits. A GitHub Action (`.github/workflows/snapshot.yml`) runs `scripts/build-snapshot.js` every three hours and on every change to `src/`. It publishes each list, already ranked, as one JSON file per language on the `data` branch. Each item holds only the IMDb id, name, poster link, year and genre keys. The add-on reads that file from GitHub's CDN, then filters by genre and pages through it in memory. Search and title details are still fetched live, because they depend on what the user asks for. Without a snapshot (a new language, or GitHub unreachable) the lists are built live as before. Set `SNAPSHOT_URL=off` to always build them live.
+
 Images are linked, never stored. Series use TVmaze's images; movies use Stremio's public metahub artwork, keyed by IMDb id.
 
 ## Credits

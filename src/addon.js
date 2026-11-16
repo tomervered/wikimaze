@@ -6,7 +6,8 @@ const pkg = require('../package.json');
 const wikidata = require('./wikidata');
 const tvmaze = require('./tvmaze');
 const genres = require('./genres');
-const { trending, recency } = require('./trending');
+const lists = require('./lists');
+const snapshot = require('./snapshot');
 
 const PAGE = 100;
 
@@ -101,6 +102,21 @@ async function localNames(imdbs, lang) {
   }
 }
 
+// Whole lists built at request time, when no snapshot is available. Kept
+// per instance so paging through a list doesn't rebuild it.
+const built = new Map(); // "lang/type/id" -> { expires, promise }
+const LIVE_TTL = 3 * 3600 * 1000;
+
+function liveList(type, id, lang) {
+  const key = `${lang}/${type}/${id}`;
+  const hit = built.get(key);
+  if (hit && hit.expires > Date.now()) return hit.promise;
+  const promise = lists.build(type, id, lang);
+  built.set(key, { expires: Date.now() + LIVE_TTL, promise });
+  promise.catch(() => built.delete(key));
+  return promise;
+}
+
 async function catalog(type, id, extra, lang) {
   const skip = Number(extra.skip) || 0;
   const q = (extra.search || '').trim();
@@ -108,46 +124,15 @@ async function catalog(type, id, extra, lang) {
   // Any catalog id with a search term searches; 'wikimaze-search' is the id
   // older installs of the manifest still use.
   if (q) return type === 'movie' ? searchMovies(q, lang) : searchSeries(q, lang);
-  if (id === 'wikimaze-search') return [];
+  if (!lists.LISTS.includes(`${type}/${id}`)) return [];
 
   const source = id === 'wikimaze-airing' || (type === 'series' && id === 'wikimaze-hot') ? 'tvmaze' : 'wikidata';
   const genre = genres.lookup(type, extra.genre, lang, source);
   if (extra.genre && !genre) return [];
 
-  if (id === 'wikimaze-trending' || (type === 'movie' && id === 'wikimaze-hot')) {
-    const wanted = genre && new Set(genre.ids);
-    const all = await trending(type, lang, id === 'wikimaze-hot' ? 'spike' : 'trending');
-    const rows = (wanted ? all.filter((r) => (r.genres || []).some((g) => wanted.has(g))) : all).slice(skip, skip + PAGE);
-    return rows.map((r) => (type === 'movie' ? moviePreview(r) : wikidataSeriesPreview(r)));
-  }
-  if ((type === 'movie' && id === 'wikimaze-popular') || (type === 'series' && id === 'wikimaze-classics')) {
-    const rows = await wikidata.classics(type, lang, skip, PAGE, genre && genre.ids);
-    return rows.map((r) => (type === 'movie' ? moviePreview(r) : wikidataSeriesPreview(r)));
-  }
-  if (type === 'series' && (id === 'wikimaze-airing' || id === 'wikimaze-hot')) {
-    const recent = id === 'wikimaze-hot' ? tvmaze.airingNow(['US', 'GB', 'IL'], 2) : tvmaze.airingNow();
-    let shows = (await recent).filter(
-      (s) => s.externals && s.externals.imdb && (!genre || (s.genres || []).includes(genre.maze))
-    );
-    if (id === 'wikimaze-hot') {
-      // A zipper of two orders, one title from each in turn: TVmaze's plain
-      // popularity weight (as in Airing now) and the same weight times a
-      // premiere-date weight (two-year half-life, floor 0.5) that favours
-      // new shows. Each show is listed once.
-      const plain = [...shows].sort((a, b) => (b.weight || 0) - (a.weight || 0));
-      const score = (x) => (x.weight || 0) * recency(x.premiered, 730, 0.5);
-      const fresh = [...shows].sort((a, b) => score(b) - score(a));
-      const seen = new Set();
-      shows = [];
-      for (let i = 0; i < plain.length; i++) {
-        for (const s of [plain[i], fresh[i]]) if (!seen.has(s.id)) seen.add(s.id) && shows.push(s);
-      }
-    }
-    const page = shows.slice(skip, skip + PAGE);
-    const names = await localNames(page.map((s) => s.externals.imdb), lang);
-    return page.map((s) => seriesPreview(s, names[s.externals.imdb] && names[s.externals.imdb].name));
-  }
-  return [];
+  const all = (await snapshot.list(type, id, lang)) || (await liveList(type, id, lang)) || [];
+  const picked = genre ? all.filter((x) => (x.g || []).includes(genre.key)) : all;
+  return picked.slice(skip, skip + PAGE).map(({ g, ...preview }) => preview);
 }
 
 async function searchMovies(q, lang) {
@@ -284,4 +269,4 @@ async function meta(type, id, lang) {
   return null;
 }
 
-module.exports = { manifest, catalog, meta };
+module.exports = { manifest, catalog, meta, clearLists: () => built.clear() };

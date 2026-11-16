@@ -1,5 +1,7 @@
 // Offline tests: the data sources are replaced with stubs, so these check
 // the merging rules, not Wikidata or TVmaze.
+// Lists come from the live builders here, never from the published snapshot.
+process.env.SNAPSHOT_URL = 'off';
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
@@ -123,24 +125,25 @@ test('server routes manifest, language prefix and extras', async () => {
 });
 
 test('genre filters: option text in either language, on every list', async () => {
-  let seen;
+  addon.clearLists();
   const undo = [
-    stub(wikidata, 'classics', async (type, lang, skip, size, genre) => {
-      seen = [type, genre];
-      return [{ imdb: 'tt1', name: 'x', year: '2020' }];
-    }),
+    stub(wikidata, 'classics', async (type) => [
+      { imdb: 'tt1', name: 'Funny', year: '2020', genres: [type === 'movie' ? 'Q157443' : 'Q9335576'] },
+      { imdb: 'tt2', name: 'Sad', year: '2021', genres: ['Q130232'] },
+    ]),
     stub(tvmaze, 'airingNow', async () => [
       { id: 1, name: 'A', genres: ['Drama'], externals: { imdb: 'tt10' } },
       { id: 2, name: 'B', genres: ['Comedy'], externals: { imdb: 'tt20' } },
     ]),
+    stub(wikidata, 'labelsByImdb', async () => ({})),
   ];
   try {
-    await addon.catalog('movie', 'wikimaze-popular', { genre: 'קומדיה' }, 'he');
-    assert.strictEqual(seen[0], 'movie');
-    assert.ok(seen[1].includes('Q157443'));
-    await addon.catalog('series', 'wikimaze-classics', { genre: 'Comedy' }, 'he');
-    assert.strictEqual(seen[0], 'series');
-    assert.ok(seen[1].includes('Q9335576'));
+    const movies = await addon.catalog('movie', 'wikimaze-popular', { genre: 'קומדיה' }, 'he');
+    assert.deepStrictEqual(movies.map((m) => m.id), ['tt1']);
+    assert.strictEqual(movies[0].g, undefined); // genre keys stay internal
+    const series = await addon.catalog('series', 'wikimaze-classics', { genre: 'Comedy' }, 'he');
+    assert.deepStrictEqual(series.map((m) => m.id), ['tt1']);
+    assert.deepStrictEqual((await addon.catalog('series', 'wikimaze-classics', {}, 'he')).length, 2);
     assert.deepStrictEqual(await addon.catalog('movie', 'wikimaze-popular', { genre: 'Nope' }, 'en'), []);
 
     const drama = await addon.catalog('series', 'wikimaze-airing', { genre: 'Drama' }, 'en');
