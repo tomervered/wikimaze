@@ -5,6 +5,7 @@
 const pkg = require('../package.json');
 const wikidata = require('./wikidata');
 const tvmaze = require('./tvmaze');
+const genres = require('./genres');
 
 const PAGE = 100;
 
@@ -26,11 +27,22 @@ function manifest(lang) {
     resources: ['catalog', { name: 'meta', types: ['movie', 'series'], idPrefixes: ['tt'] }],
     types: ['movie', 'series'],
     idPrefixes: ['tt'],
+    // One browsable catalog per type. Search and genre are optional extras
+    // on it (like Cinemeta), so Discover always has a list to show and
+    // Stremio's search bar still reaches it.
     catalogs: [
-      { type: 'movie', id: 'wikimaze-popular', name: 'WikiMaze Popular', extra: [{ name: 'skip' }] },
-      { type: 'series', id: 'wikimaze-airing', name: 'WikiMaze Airing now', extra: [{ name: 'skip' }] },
-      { type: 'movie', id: 'wikimaze-search', name: 'WikiMaze', extra: [{ name: 'search', isRequired: true }] },
-      { type: 'series', id: 'wikimaze-search', name: 'WikiMaze', extra: [{ name: 'search', isRequired: true }] },
+      {
+        type: 'movie',
+        id: 'wikimaze-popular',
+        name: 'WikiMaze Popular',
+        extra: [{ name: 'search' }, { name: 'genre', options: genres.options('movie', lang) }, { name: 'skip' }],
+      },
+      {
+        type: 'series',
+        id: 'wikimaze-airing',
+        name: 'WikiMaze Airing now',
+        extra: [{ name: 'search' }, { name: 'genre', options: genres.options('series', lang) }, { name: 'skip' }],
+      },
     ],
     behaviorHints: { configurable: true },
   };
@@ -69,18 +81,24 @@ async function localNames(imdbs, lang) {
 
 async function catalog(type, id, extra, lang) {
   const skip = Number(extra.skip) || 0;
+  const q = (extra.search || '').trim();
 
-  if (id === 'wikimaze-search') {
-    const q = (extra.search || '').trim();
-    if (!q) return [];
-    return type === 'movie' ? searchMovies(q, lang) : searchSeries(q, lang);
-  }
+  // Any catalog id with a search term searches; 'wikimaze-search' is the id
+  // older installs of the manifest still use.
+  if (q) return type === 'movie' ? searchMovies(q, lang) : searchSeries(q, lang);
+  if (id === 'wikimaze-search') return [];
+
+  const genre = genres.lookup(type, extra.genre, lang);
+  if (extra.genre && !genre) return [];
+
   if (type === 'movie' && id === 'wikimaze-popular') {
-    const rows = await wikidata.popularMovies(lang, skip, PAGE);
+    const rows = await wikidata.popularMovies(lang, skip, PAGE, genre);
     return rows.map(moviePreview);
   }
   if (type === 'series' && id === 'wikimaze-airing') {
-    const shows = (await tvmaze.airingNow()).filter((s) => s.externals && s.externals.imdb);
+    const shows = (await tvmaze.airingNow()).filter(
+      (s) => s.externals && s.externals.imdb && (!genre || (s.genres || []).includes(genre))
+    );
     const page = shows.slice(skip, skip + PAGE);
     const names = await localNames(page.map((s) => s.externals.imdb), lang);
     return page.map((s) => seriesPreview(s, names[s.externals.imdb] && names[s.externals.imdb].name));

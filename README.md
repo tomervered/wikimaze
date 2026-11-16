@@ -11,9 +11,9 @@ Every title is keyed by its IMDb id (`tt…`), so stream add-ons still match it,
 
 | Catalog | Source |
 | --- | --- |
-| Popular movies | Films first released this year or last, ranked by how many Wikipedia editions have an article on them |
-| Airing now (series) | Shows with an episode in the last 7 days on US/UK TV or streaming, ranked by TVmaze's popularity weight |
-| Search (movies, series) | Wikidata full-text search (any language) plus TVmaze search for series |
+| Popular movies | Films first released this year or last, ranked by how many Wikipedia editions have an article on them. With a genre picked: that genre's films from all years, same ranking |
+| Airing now (series) | Shows with an episode in the last 7 days on US/UK TV or streaming, ranked by TVmaze's popularity weight, optionally filtered by TVmaze genre |
+| Search (both) | Wikidata full-text search, which matches titles in every language (searching "שובר שורות" in the English install finds Breaking Bad), plus TVmaze search for series |
 
 ## Install
 

@@ -121,3 +121,33 @@ test('server routes manifest, language prefix and extras', async () => {
     server.close();
   }
 });
+
+test('genre option text maps back to its id in either language; unknown genre is empty', async () => {
+  let seen;
+  const undo = [
+    stub(wikidata, 'popularMovies', async (lang, skip, size, genre) => {
+      seen = genre;
+      return [{ imdb: 'tt1', name: 'x', year: '2020' }];
+    }),
+    stub(tvmaze, 'airingNow', async () => [
+      { id: 1, name: 'A', genres: ['Drama'], externals: { imdb: 'tt10' } },
+      { id: 2, name: 'B', genres: ['Comedy'], externals: { imdb: 'tt20' } },
+    ]),
+  ];
+  try {
+    await addon.catalog('movie', 'wikimaze-popular', { genre: 'קומדיה' }, 'he');
+    assert.deepStrictEqual(seen, ['Q157443', 'Q860626']);
+    await addon.catalog('movie', 'wikimaze-popular', { genre: 'Comedy' }, 'he');
+    assert.deepStrictEqual(seen, ['Q157443', 'Q860626']);
+    assert.deepStrictEqual(await addon.catalog('movie', 'wikimaze-popular', { genre: 'Nope' }, 'en'), []);
+
+    const drama = await addon.catalog('series', 'wikimaze-airing', { genre: 'Drama' }, 'en');
+    assert.deepStrictEqual(drama.map((m) => m.id), ['tt10']);
+
+    const man = addon.manifest('he');
+    assert.ok(man.catalogs.every((c) => c.extra.some((e) => e.name === 'genre')));
+    assert.ok(man.catalogs.every((c) => !c.extra.some((e) => e.isRequired)));
+  } finally {
+    undo.forEach((u) => u());
+  }
+});

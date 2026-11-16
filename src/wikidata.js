@@ -78,19 +78,25 @@ async function search(type, query, lang, limit = 40) {
   return dedupeRows(rows);
 }
 
-// Recent films, most popular first. Wikidata has no view counts, so the
-// number of Wikipedia editions with an article (sitelinks) stands in for
-// popularity. Matching a date range in SPARQL times out, so the candidates
-// come from full-text search instead: bot-written English descriptions start
-// with the year ("2025 film directed by ..."). The 1000 most-linked
-// candidates are then re-ranked by sitelinks, and re-releases (first release
-// before last year) are dropped.
+// Films, most popular first. Wikidata has no view counts, so the number of
+// Wikipedia editions with an article (sitelinks) stands in for popularity.
+// Matching a date range in SPARQL times out, so candidates come from
+// full-text search: bot-written English descriptions start with the year
+// ("2025 film directed by ..."). The 1000 most-linked candidates are then
+// re-ranked by sitelinks.
+//
+// Without a genre: films first released this year or last (re-releases
+// dropped). With a genre (a list of Wikidata ids from genres.js): all years,
+// so a genre always has enough titles to browse.
 const POPULAR_POOL = 1000;
 
-async function popularMovies(lang, skip = 0, pageSize = 100) {
+async function popularMovies(lang, skip = 0, pageSize = 100, genreIds = null) {
   const year = new Date().getUTCFullYear();
   const classes = FILM_CLASSES.map((c) => `P31=${c}`).join('|');
-  const srsearch = `"${year} film" OR "${year - 1} film" haswbstatement:P345 haswbstatement:${classes}`;
+  const filter = genreIds
+    ? `haswbstatement:${genreIds.map((g) => `P136=${g}|P31=${g}`).join('|')}`
+    : `"${year} film" OR "${year - 1} film"`;
+  const srsearch = `${filter} haswbstatement:P345 haswbstatement:${classes}`;
   const rows = await sparql(
     `SELECT ?item ?imdb ?label ?date ?links WHERE {
       SERVICE wikibase:mwapi {
@@ -107,7 +113,7 @@ async function popularMovies(lang, skip = 0, pageSize = 100) {
   );
   const links = new Map(rows.map((r) => [r.imdb.value, Number(r.links.value)]));
   return dedupeRows(rows)
-    .filter((x) => x.year && Number(x.year) >= year - 1 && Number(x.year) <= year)
+    .filter((x) => genreIds || (x.year && Number(x.year) >= year - 1 && Number(x.year) <= year))
     .sort((a, b) => links.get(b.imdb) - links.get(a.imdb))
     .slice(skip, skip + pageSize);
 }
