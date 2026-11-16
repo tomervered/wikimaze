@@ -190,3 +190,63 @@ test('trending merges English and local Wikipedia and keeps the asked type', asy
     undo.forEach((u) => u());
   }
 });
+
+test('details rows: billing order, then best known; runtime; Wikipedia in the viewer language', () => {
+  const wd = require('../src/wikidata');
+  const E = 'http://www.wikidata.org/entity/';
+  const lit = (value) => ({ value });
+  const row = (kind, v, extra = {}) => ({ item: lit(E + 'Q1'), kind: lit(kind), v: lit(v), ...extra });
+  const rows = [
+    row('label', 'en', { vl: lit('The Film (2001 film)') }),
+    row('label', 'he', { vl: lit('הסרט') }),
+    row('desc', 'en', { vl: lit('2001 film') }),
+    row('wiki', 'https://en.wikipedia.org/', { vl: lit('https://en.wikipedia.org/wiki/The_Film') }),
+    row('P577', '2001-05-01T00:00:00Z', { prec: lit('11') }),
+    row('P577', '2000-01-01T00:00:00Z', { prec: lit('9') }),
+    row('P577', '1900-01-01T00:00:00Z', { prec: lit('7') }), // century precision: ignored
+    row('P2047', '7200', { unit: lit(E + 'Q11574'), n: lit('0') }),
+    row('P161', E + 'Q10', { vl: lit('Minor'), n: lit('3') }),
+    row('P161', E + 'Q11', { vl: lit('Star'), n: lit('90') }),
+    row('P161', E + 'Q12', { vl: lit('Billed first'), n: lit('5'), ord: lit('1') }),
+    row('P161', E + 'Q13', { vl: lit('Q13'), n: lit('99') }), // no label in any language
+    row('P136', E + 'Q20', { vl: lit('דרמה'), n: lit('50') }),
+  ];
+  const d = wd.detailsFromRows(rows, 'Q1', 'movie', 'he');
+  assert.strictEqual(d.name, 'הסרט');
+  assert.strictEqual(d.englishName, 'The Film');
+  assert.strictEqual(d.description, '2001 film');
+  assert.strictEqual(d.year, '2000');
+  assert.strictEqual(d.runtime, '120 min');
+  assert.deepStrictEqual(d.cast, ['Billed first', 'Star', 'Minor']);
+  assert.deepStrictEqual(d.genres, ['דרמה']);
+  assert.strictEqual(d.wikipedia.url, 'https://en.wikipedia.org/wiki/The_Film');
+});
+
+test('getJson gives up at its time limit instead of hanging', async () => {
+  const { getJson } = require('../src/http');
+  const server = http.createServer(() => {}).listen(0); // never answers
+  try {
+    const started = Date.now();
+    await assert.rejects(getJson(`http://127.0.0.1:${server.address().port}/slow`, { timeout: 300 }));
+    assert.ok(Date.now() - started < 2000);
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+});
+
+test('responses allow serving stale while refreshing; empty lists are kept briefly', async () => {
+  const undo = [
+    stub(wikidata, 'search', async (type, q) => (q === 'none' ? [] : [{ imdb: 'tt1375666', name: q, year: '2010' }])),
+  ];
+  const server = createServer().listen(0);
+  const port = server.address().port;
+  const head = (p) => new Promise((resolve) => http.get({ port, path: p }, (res) => { res.resume(); resolve(res.headers['cache-control']); }));
+  try {
+    assert.match(await head('/catalog/movie/wikimaze-popular/search=x.json'), /stale-while-revalidate=86400/);
+    assert.strictEqual(await head('/catalog/movie/wikimaze-popular/search=none.json'), 'public, max-age=60, s-maxage=60');
+  } finally {
+    undo.forEach((u) => u());
+    server.close();
+  }
+});

@@ -10,13 +10,21 @@ const addon = require('./addon');
 const { configurePage } = require('./page');
 
 const LANG = /^[a-z]{2,3}$/;
+const DAY = 86400;
 
-function send(res, status, body, { type = 'application/json', maxAge = 0 } = {}) {
+// maxAge: how long Stremio and Vercel's CDN treat a response as fresh.
+// stale: how long after that the CDN still answers instantly with the old
+// copy while it fetches a new one in the background (and keeps serving it
+// if the refresh fails), so only the very first visitor waits.
+function send(res, status, body, { type = 'application/json', maxAge = 0, stale = 0 } = {}) {
   res.writeHead(status, {
     'Content-Type': `${type}; charset=utf-8`,
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': '*',
-    'Cache-Control': maxAge ? `public, max-age=${maxAge}, s-maxage=${maxAge}` : 'no-store',
+    'Cache-Control': maxAge
+      ? `public, max-age=${maxAge}, s-maxage=${maxAge}` +
+        (stale ? `, stale-while-revalidate=${stale}, stale-if-error=${stale}` : '')
+      : 'no-store',
   });
   res.end(type === 'application/json' ? JSON.stringify(body) : body);
 }
@@ -78,13 +86,16 @@ async function route(req, res) {
   if (parts[0] === 'catalog' && (parts.length === 3 || parts.length === 4)) {
     const [, type, id, extra] = parts;
     const metas = await addon.catalog(type, decodeURIComponent(id), parseExtra(extra), lang);
-    return send(res, 200, { metas }, { maxAge: extra && extra.includes('search=') ? 3600 : 6 * 3600 });
+    const search = extra && extra.includes('search=');
+    // An empty list may only mean an upstream timed out: keep it briefly.
+    if (!metas.length) return send(res, 200, { metas }, { maxAge: 60 });
+    return send(res, 200, { metas }, search ? { maxAge: 3600, stale: DAY } : { maxAge: 6 * 3600, stale: 7 * DAY });
   }
   if (parts[0] === 'meta' && parts.length === 3) {
     const [, type, id] = parts;
     const meta = await addon.meta(type, decodeURIComponent(id), lang);
     if (!meta) return send(res, 404, { meta: null });
-    return send(res, 200, { meta }, { maxAge: 12 * 3600 });
+    return send(res, 200, { meta }, { maxAge: 12 * 3600, stale: 7 * DAY });
   }
   return send(res, 404, { err: 'not found', url: req.url });
 }

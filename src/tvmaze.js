@@ -28,15 +28,15 @@ function image(img, size = 'original') {
 
 async function showByImdb(imdb) {
   // The lookup endpoint answers with a redirect to /shows/:id.
-  return getJson(`${API}/lookup/shows?imdb=${encodeURIComponent(imdb)}`, { ttl: 24 * 3600 });
+  return getJson(`${API}/lookup/shows?imdb=${encodeURIComponent(imdb)}`, { ttl: 24 * 3600, timeout: 6000 });
 }
 
 async function showFull(id) {
-  return getJson(`${API}/shows/${id}?embed[]=episodes&embed[]=cast&embed[]=images`, { ttl: 6 * 3600 });
+  return getJson(`${API}/shows/${id}?embed[]=episodes&embed[]=cast&embed[]=images`, { ttl: 6 * 3600, timeout: 8000 });
 }
 
 async function search(query) {
-  const rows = await getJson(`${API}/search/shows?q=${encodeURIComponent(query)}`, { ttl: 3600 });
+  const rows = await getJson(`${API}/search/shows?q=${encodeURIComponent(query)}`, { ttl: 3600, timeout: 5000 });
   return (rows || []).map((r) => r.show);
 }
 
