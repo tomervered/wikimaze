@@ -65,7 +65,7 @@ async function route(req, res) {
   }
 
   const last = parts.length ? parts[parts.length - 1] : '';
-  if (!last.endsWith('.json')) return send(res, 404, { err: 'not found' });
+  if (!last.endsWith('.json')) return send(res, 404, { err: 'not found', url: req.url });
   parts[parts.length - 1] = last.slice(0, -5);
 
   if (parts[0] === 'catalog' && (parts.length === 3 || parts.length === 4)) {
@@ -79,7 +79,7 @@ async function route(req, res) {
     if (!meta) return send(res, 404, { meta: null });
     return send(res, 200, { meta }, { maxAge: 12 * 3600 });
   }
-  return send(res, 404, { err: 'not found' });
+  return send(res, 404, { err: 'not found', url: req.url });
 }
 
 function handler(req, res) {
