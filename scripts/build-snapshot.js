@@ -28,7 +28,9 @@ async function main() {
       const [type, id] = key.split('/');
       const started = Date.now();
       try {
-        const items = await lists.build(type, id, lang);
+        // One retry: Wikidata's query service has slow moments.
+        let items = await lists.build(type, id, lang).catch(() => null);
+        if (!items || !items.length) items = await lists.build(type, id, lang);
         if (!items || !items.length) throw new Error('empty list');
         out[key] = items;
         console.log(`${lang} ${key}: ${items.length} items in ${Date.now() - started} ms`);
