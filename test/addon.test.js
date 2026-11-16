@@ -189,3 +189,32 @@ test('trending: needs two editions or the viewer\'s own; local edition weighs mo
     undo();
   }
 });
+
+test('getJson gives up at its time limit instead of hanging', async () => {
+  const { getJson } = require('../src/http');
+  const server = http.createServer(() => {}).listen(0); // never answers
+  try {
+    const started = Date.now();
+    await assert.rejects(getJson(`http://127.0.0.1:${server.address().port}/slow`, { timeout: 300 }));
+    assert.ok(Date.now() - started < 2000);
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+});
+
+test('responses allow serving stale while refreshing; empty lists are kept briefly', async () => {
+  const undo = [
+    stub(wikidata, 'search', async (type, q) => (q === 'none' ? [] : [{ imdb: 'tt1375666', name: q, year: '2010' }])),
+  ];
+  const server = createServer().listen(0);
+  const port = server.address().port;
+  const head = (p) => new Promise((resolve) => http.get({ port, path: p }, (res) => { res.resume(); resolve(res.headers['cache-control']); }));
+  try {
+    assert.match(await head('/catalog/movie/wikimaze-popular/search=x.json'), /stale-while-revalidate=86400/);
+    assert.strictEqual(await head('/catalog/movie/wikimaze-popular/search=none.json'), 'public, max-age=60, s-maxage=60');
+  } finally {
+    undo.forEach((u) => u());
+    server.close();
+  }
+});

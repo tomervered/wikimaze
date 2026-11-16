@@ -78,6 +78,9 @@ async function route(req, res) {
   if (parts.length === 1 && parts[0] === 'health') {
     return send(res, 200, { ok: true });
   }
+  if (parts.length === 1 && parts[0] === 'warm') {
+    return send(res, 200, await warm(origin));
+  }
 
   const last = parts.length ? parts[parts.length - 1] : '';
   if (!last.endsWith('.json')) return send(res, 404, { err: 'not found', url: req.url });
@@ -98,6 +101,34 @@ async function route(req, res) {
     return send(res, 200, { meta }, { maxAge: 12 * 3600, stale: 7 * DAY });
   }
   return send(res, 404, { err: 'not found', url: req.url });
+}
+
+// Requests the home rows through the public URL, so Vercel's CDN holds a
+// copy and Stremio never waits for a cold build (Trending takes 20-30 s).
+// Run daily by the cron in vercel.json; harmless to call by hand.
+const WARM_LANGS = ['en', 'he'];
+const WARM_FIRST = ['movie/wikimaze-trending', 'movie/wikimaze-popular', 'series/wikimaze-airing'];
+const WARM_AFTER = ['series/wikimaze-trending']; // built together with the movie list
+
+async function warm(origin) {
+  const out = {};
+  const hit = async (lang, path) => {
+    const url = `${origin}${lang === 'en' ? '' : '/' + lang}/catalog/${path}.json`;
+    const started = Date.now();
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(55000) });
+      out[url] = `${r.status} ${Date.now() - started} ms`;
+    } catch (err) {
+      out[url] = err.message;
+    }
+  };
+  await Promise.all(
+    WARM_LANGS.map(async (lang) => {
+      await Promise.all(WARM_FIRST.map((p) => hit(lang, p)));
+      await Promise.all(WARM_AFTER.map((p) => hit(lang, p)));
+    })
+  );
+  return out;
 }
 
 function handler(req, res) {
