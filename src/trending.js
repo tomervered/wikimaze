@@ -163,4 +163,73 @@ async function trending(type, lang, mode = 'trending') {
   return [...all.filter(strong), ...all.filter((x) => !strong(x))];
 }
 
-module.exports = { trending, surge, recency, movieAgeWeight };
+// Regional Trending. Wikimedia publishes, per country and day, the most-read
+// articles across all Wikipedias (anonymous totals, CC0; small counts are
+// withheld for privacy). A region's list leans on that country's readers
+// without being only theirs:
+//   final = REGION_WEIGHT * country share + (1 - REGION_WEIGHT) * global share
+// where each part is first scaled to sum to 1 over its own list, so a small
+// country's short list still counts in full.
+const REGIONS = ['us', 'gb', 'de', 'fr', 'es', 'it', 'pl', 'il', 'eg', 'jp', 'br'];
+const REGION_WEIGHT = 0.6;
+const COUNTRY = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/top-per-country';
+
+// Map(wiki -> Map(title -> mean share over the last DAYS days)) for a country.
+async function countryShares(region) {
+  const days = await Promise.all(
+    Array.from({ length: DAYS + 1 }, (_, i) =>
+      getJson(`${COUNTRY}/${region.toUpperCase()}/all-access/${day(i + 1)}`, { ttl: 3 * 3600 })
+        .then((r) => (r && r.items ? r.items[0].articles : null))
+        .catch(() => null)
+    )
+  );
+  const out = new Map();
+  for (const list of days.filter(Boolean).slice(0, DAYS)) {
+    const kept = list.filter((a) => /\.wikipedia$/.test(a.project) && !SKIP.test(a.article));
+    const total = kept.reduce((n, a) => n + a.views_ceil, 0) || 1;
+    for (const a of kept) {
+      const wiki = a.project.replace(/\.wikipedia$/, '');
+      const m = out.get(wiki) || new Map();
+      const t = a.article.replace(/_/g, ' ');
+      m.set(t, (m.get(t) || 0) + a.views_ceil / total / DAYS);
+      out.set(wiki, m);
+    }
+  }
+  return out;
+}
+
+async function regional(type, lang, region) {
+  const [global, shares] = await Promise.all([trending(type, lang), countryShares(region)]);
+  const local = new Map();
+  await Promise.all(
+    [...shares].map(async ([wiki, titles]) => {
+      const found = await wikidata.itemsForWikiTitles([...titles.keys()], wiki, lang).catch(() => ({}));
+      for (const [title, item] of Object.entries(found)) {
+        if (item.type !== type || (type === 'movie' && !wikidata.releasedBy(item))) continue;
+        const prev = local.get(item.imdb);
+        local.set(item.imdb, { ...item, score: (prev ? prev.score : 0) + titles.get(title) });
+      }
+    })
+  );
+  const sum = (xs) => xs.reduce((n, x) => n + x.score, 0) || 1;
+  const gSum = sum(global);
+  const lSum = sum([...local.values()]);
+  const out = new Map();
+  // Keep the global list's consensus rule: a title read in one edition only
+  // (a Bollywood hit on English Wikipedia) counts a quarter, unless the
+  // country itself reads it.
+  for (const x of global) {
+    const solo = !(x.editions >= 2 || x.local) ? 0.25 : 1;
+    out.set(x.imdb, { ...x, score: (1 - REGION_WEIGHT) * solo * (x.score / gSum) });
+  }
+  // Without any country data the list is the global one.
+  if (local.size) {
+    for (const x of local.values()) {
+      const prev = out.get(x.imdb);
+      out.set(x.imdb, { ...(prev || x), score: (prev ? prev.score : 0) + REGION_WEIGHT * (x.score / lSum) });
+    }
+  }
+  return [...out.values()].sort((a, b) => b.score - a.score);
+}
+
+module.exports = { trending, regional, REGIONS, REGION_WEIGHT, surge, recency, movieAgeWeight };

@@ -11,6 +11,7 @@ const LANGS = [
   ['es', 'Español'],
   ['it', 'Italiano'],
   ['pt', 'Português'],
+  ['pl', 'Polski'],
   ['ja', '日本語'],
 ];
 
@@ -18,9 +19,27 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-function configurePage(origin, lang) {
+const REGIONS = [
+  ['', 'Worldwide'],
+  ['us', 'United States'],
+  ['gb', 'United Kingdom'],
+  ['de', 'Germany'],
+  ['fr', 'France'],
+  ['es', 'Spain'],
+  ['it', 'Italy'],
+  ['pl', 'Poland'],
+  ['il', 'Israel'],
+  ['eg', 'Egypt'],
+  ['jp', 'Japan'],
+  ['br', 'Brazil'],
+];
+
+function configurePage(origin, lang, region = '') {
   const options = LANGS.map(
     ([code, label]) => `<option value="${code}"${code === lang ? ' selected' : ''}>${esc(label)}</option>`
+  ).join('');
+  const regionOptions = REGIONS.map(
+    ([code, label]) => `<option value="${code}"${code === (region || '') ? ' selected' : ''}>${esc(label)}</option>`
   ).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -45,6 +64,9 @@ function configurePage(origin, lang) {
   <p>Movie and series details from Wikidata and TVmaze, with titles in your language.</p>
   <label for="lang">Language</label>
   <select id="lang">${options}</select>
+  <label for="region" style="margin-top:16px">Trending region</label>
+  <select id="region">${regionOptions}</select>
+  <p style="font-size:13px;margin:6px 0 0">A region leans Trending toward what that country is reading (60% country, 40% worldwide).</p>
   <fieldset id="lists" style="margin-top:16px;border:0;padding:0;display:grid;gap:6px">
     <legend style="font-weight:600;margin-bottom:6px">Lists to show</legend>
     <label style="font-weight:400"><input type="checkbox" id="l-t" value="t" checked style="width:auto"> Trending</label>
@@ -64,17 +86,19 @@ function configurePage(origin, lang) {
 </div></main>
 <script>
   const origin = ${JSON.stringify(origin)};
-  const sel = document.getElementById('lang'), url = document.getElementById('url'), install = document.getElementById('install');
+  const sel = document.getElementById('lang'), reg = document.getElementById('region'), url = document.getElementById('url'), install = document.getElementById('install');
   function update() {
     const l = sel.value;
     const picked = [...document.querySelectorAll('#lists input:checked')].map((c) => c.value).join('');
     // All four (the default) needs no suffix; none picked falls back to all.
-    const prefix = picked && picked.length < 4 ? l + '.' + picked : (l === 'en' ? '' : l);
+    let prefix = picked && picked.length < 4 ? l + '.' + picked : (l === 'en' ? '' : l);
+    if (reg.value) prefix = (prefix || l) + '-' + reg.value;
     const link = origin + (prefix ? '/' + prefix : '') + '/manifest.json';
     url.value = link;
     install.href = link.replace(/^https?:/, 'stremio:');
   }
   sel.addEventListener('change', update);
+  reg.addEventListener('change', update);
   document.getElementById('lists').addEventListener('change', update);
   document.getElementById('copy').addEventListener('click', () => { url.select(); navigator.clipboard && navigator.clipboard.writeText(url.value); });
   update();

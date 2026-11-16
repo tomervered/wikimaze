@@ -23,10 +23,11 @@ async function load(lang) {
   }
 }
 
-// One list from the snapshot, or null.
-async function list(type, id, lang) {
+// One list from the snapshot, or null. Regional Trending lists are stored
+// under "type/id@region".
+async function list(type, id, lang, region = null) {
   const snap = await load(lang);
-  const items = snap && snap.lists[`${type}/${id}`];
+  const items = snap && snap.lists[`${type}/${id}${region ? '@' + region : ''}`];
   return Array.isArray(items) ? items : null;
 }
 

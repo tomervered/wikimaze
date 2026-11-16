@@ -15,7 +15,7 @@
 const wikidata = require('./wikidata');
 const tvmaze = require('./tvmaze');
 const genres = require('./genres');
-const { trending, recency } = require('./trending');
+const { trending, regional, recency } = require('./trending');
 
 // Longest list kept per catalog; Stremio pages through it 100 at a time.
 const MAX_ITEMS = 2000;
@@ -114,8 +114,12 @@ async function tvmazeList(id, lang) {
 }
 
 // The whole ranked list for one catalog, or null when there is no such list.
-async function build(type, id, lang) {
+async function build(type, id, lang, region = null) {
   if (!LISTS.includes(`${type}/${id}`)) return null;
+  if (region && id === 'wikimaze-trending') {
+    const rows = await regional(type, lang, region);
+    return rows.slice(0, MAX_ITEMS).map((r) => fromWikidata(type, r));
+  }
   if (id === 'wikimaze-trending' || (type === 'movie' && id === 'wikimaze-hot')) {
     const rows = await trending(type, lang, id === 'wikimaze-hot' ? 'spike' : 'trending');
     return rows.slice(0, MAX_ITEMS).map((r) => fromWikidata(type, r));

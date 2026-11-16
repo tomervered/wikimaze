@@ -9,6 +9,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const lists = require('../src/lists');
+const { REGIONS } = require('../src/trending');
 
 async function main() {
   const [outDir = 'snapshot', ...langs] = process.argv.slice(2);
@@ -24,13 +25,19 @@ async function main() {
       // first build, or no previous snapshot
     }
     const out = {};
-    for (const key of lists.LISTS) {
-      const [type, id] = key.split('/');
+    // Every list, then Trending once per region ("type/id@region").
+    const keys = [
+      ...lists.LISTS,
+      ...lists.LISTS.filter((k) => k.endsWith('/wikimaze-trending')).flatMap((k) => REGIONS.map((r) => `${k}@${r}`)),
+    ];
+    for (const key of keys) {
+      const [type, rest] = key.split('/');
+      const [id, region] = rest.split('@');
       const started = Date.now();
       try {
         // One retry: Wikidata's query service has slow moments.
-        let items = await lists.build(type, id, lang).catch(() => null);
-        if (!items || !items.length) items = await lists.build(type, id, lang);
+        let items = await lists.build(type, id, lang, region).catch(() => null);
+        if (!items || !items.length) items = await lists.build(type, id, lang, region);
         if (!items || !items.length) throw new Error('empty list');
         out[key] = items;
         console.log(`${lang} ${key}: ${items.length} items in ${Date.now() - started} ms`);
@@ -45,7 +52,7 @@ async function main() {
     console.log(`${file}: ${(fs.statSync(file).size / 1024).toFixed(0)} KB`);
   }
   // Fail the run only when nothing could be built at all.
-  if (failures === lists.LISTS.length * (langs.length || 2)) process.exit(1);
+  if (failures === (lists.LISTS.length + 2 * REGIONS.length) * (langs.length || 2)) process.exit(1);
 }
 
 main().catch((err) => {

@@ -287,3 +287,14 @@ test('install link picks lists: "he.tc" keeps Trending and Classics only', () =>
   assert.notStrictEqual(m.id, addon.manifest('he').id);
   assert.strictEqual(addon.manifest('he').catalogs.length, 7);
 });
+
+test('regions: link prefix parses, manifest is named, unknown regions are ignored', async () => {
+  const addon = require('../src/addon');
+  const m = addon.manifest('he', null, 'il');
+  assert.strictEqual(m.id, 'community.wikimaze.he-il');
+  assert.ok(m.name.endsWith(' IL'));
+  assert.strictEqual(addon.manifest('en', null, 'zz').id, 'community.wikimaze');
+  const { REGIONS, REGION_WEIGHT } = require('../src/trending');
+  assert.deepStrictEqual(REGIONS, ['us', 'gb', 'de', 'fr', 'es', 'it', 'pl', 'il', 'eg', 'jp', 'br']);
+  assert.ok(REGION_WEIGHT > 0.5 && REGION_WEIGHT < 1);
+});

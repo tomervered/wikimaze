@@ -11,7 +11,8 @@ const { configurePage } = require('./page');
 
 // First path segment: the language, optionally with the chosen lists after a
 // dot, e.g. "he" or "he.tc" (see addon.LIST_FLAGS).
-const LANG = /^([a-z]{2,3})(?:\.([a-z]+))?$/;
+// A region may follow after a dash: "en-us", "he.tc-il" (Trending only).
+const LANG = /^([a-z]{2,3})(?:\.([a-z]+))?(?:-([a-z]{2}))?$/;
 const DAY = 86400;
 
 // maxAge: how long Stremio and Vercel's CDN treat a response as fresh.
@@ -65,20 +66,22 @@ async function route(req, res) {
   let parts = path.split('/').filter(Boolean);
   let lang = 'en';
   let lists = null;
+  let region = null;
   const prefix = parts.length && parts[0].match(LANG);
   if (prefix) {
     lang = prefix[1];
     lists = prefix[2] || null;
+    region = prefix[3] || null;
     parts = parts.slice(1);
   }
 
   const origin = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`;
 
   if (parts.length === 0 || (parts.length === 1 && parts[0] === 'configure')) {
-    return send(res, 200, configurePage(origin, lang), { type: 'text/html', maxAge: 3600 });
+    return send(res, 200, configurePage(origin, lang, region), { type: 'text/html', maxAge: 3600 });
   }
   if (parts.length === 1 && parts[0] === 'manifest.json') {
-    return send(res, 200, addon.manifest(lang, lists), { maxAge: 3600 });
+    return send(res, 200, addon.manifest(lang, lists, region), { maxAge: 3600 });
   }
   if (parts.length === 1 && parts[0] === 'health') {
     return send(res, 200, { ok: true });
@@ -93,7 +96,7 @@ async function route(req, res) {
 
   if (parts[0] === 'catalog' && (parts.length === 3 || parts.length === 4)) {
     const [, type, id, extra] = parts;
-    const metas = await addon.catalog(type, decodeURIComponent(id), parseExtra(extra), lang);
+    const metas = await addon.catalog(type, decodeURIComponent(id), parseExtra(extra), lang, region);
     const search = extra && extra.includes('search=');
     // An empty list may only mean an upstream timed out: keep it briefly.
     if (!metas.length) return send(res, 200, { metas }, { maxAge: 60 });

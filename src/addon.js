@@ -6,6 +6,7 @@ const pkg = require('../package.json');
 const wikidata = require('./wikidata');
 const tvmaze = require('./tvmaze');
 const genres = require('./genres');
+const { REGIONS } = require('./trending');
 const lists = require('./lists');
 const snapshot = require('./snapshot');
 
@@ -24,8 +25,11 @@ function genreExtra(type, lang, source) {
 // the install link ("he.tc" = Trending and Classics, Hebrew).
 const LIST_FLAGS = { t: 'wikimaze-trending', v: 'wikimaze-hot', c: ['wikimaze-popular', 'wikimaze-classics'], a: 'wikimaze-airing' };
 
-function manifest(lang, lists = null) {
-  const m = fullManifest(lang);
+function manifest(lang, lists = null, region = null) {
+  let m = fullManifest(lang);
+  if (region && REGIONS.includes(region)) {
+    m = { ...m, id: `${m.id}-${region}`, name: `${m.name} ${region.toUpperCase()}` };
+  }
   if (!lists) return m;
   const keep = new Set([...lists].flatMap((f) => [].concat(LIST_FLAGS[f] || [])));
   const catalogs = m.catalogs.filter((c) => keep.has(c.id));
@@ -119,17 +123,17 @@ async function localNames(imdbs, lang) {
 const built = new Map(); // "lang/type/id" -> { expires, promise }
 const LIVE_TTL = 3 * 3600 * 1000;
 
-function liveList(type, id, lang) {
-  const key = `${lang}/${type}/${id}`;
+function liveList(type, id, lang, region) {
+  const key = `${lang}/${type}/${id}${region ? '@' + region : ''}`;
   const hit = built.get(key);
   if (hit && hit.expires > Date.now()) return hit.promise;
-  const promise = lists.build(type, id, lang);
+  const promise = lists.build(type, id, lang, region);
   built.set(key, { expires: Date.now() + LIVE_TTL, promise });
   promise.catch(() => built.delete(key));
   return promise;
 }
 
-async function catalog(type, id, extra, lang) {
+async function catalog(type, id, extra, lang, region = null) {
   const skip = Number(extra.skip) || 0;
   const q = (extra.search || '').trim();
 
@@ -142,7 +146,9 @@ async function catalog(type, id, extra, lang) {
   const genre = genres.lookup(type, extra.genre, lang, source);
   if (extra.genre && !genre) return [];
 
-  const all = (await snapshot.list(type, id, lang)) || (await liveList(type, id, lang)) || [];
+  // A region changes only Trending; the other lists are the same everywhere.
+  const r = id === 'wikimaze-trending' && REGIONS.includes(region) ? region : null;
+  const all = (await snapshot.list(type, id, lang, r)) || (await liveList(type, id, lang, r)) || [];
   const picked = genre ? all.filter((x) => (x.g || []).includes(genre.key)) : all;
   return picked.slice(skip, skip + PAGE).map(({ g, ...preview }) => preview);
 }
