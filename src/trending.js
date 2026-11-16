@@ -5,6 +5,11 @@
 // an IMDb id are kept. Each edition's views count as a share of its own
 // top-1000 total, so big editions don't drown small ones; the viewer's own
 // edition counts three times, so Israeli hits rank high in the Hebrew install.
+//
+// The same lists also give Very Trending movies (see spike() below). That
+// use is a PLACEHOLDER: Tomer wants a non-Wikipedia source for it once a
+// legal, commercially usable one exists (IMDb data is paid-only, TMDB and
+// Trakt are non-commercial).
 
 const { getJson } = require('./http');
 const wikidata = require('./wikidata');
@@ -21,48 +26,74 @@ function day(offset) {
   return d.toISOString().slice(0, 10).replace(/-/g, '/');
 }
 
-// Map of title -> share of the edition's top-list views over the last days.
-async function topArticles(wiki) {
-  // Today's list never exists yet and yesterday's appears during the day, so
-  // ask for four days and use the newest three that answered.
+// The edition's daily top lists, newest first: one Map(title -> share of
+// that day's top-list views) per day. Today's list never exists yet and
+// yesterday's appears during the day, so ask for one day more than needed.
+const LOOKBACK = 8;
+
+async function dailyShares(wiki) {
   const lists = await Promise.all(
-    [1, 2, 3, 4].map((i) =>
-      getJson(`${TOP}/${wiki}.wikipedia/all-access/${day(i)}`, { ttl: 3 * 3600 })
+    Array.from({ length: LOOKBACK + 1 }, (_, i) =>
+      getJson(`${TOP}/${wiki}.wikipedia/all-access/${day(i + 1)}`, { ttl: 3 * 3600 })
         .then((r) => (r && r.items ? r.items[0].articles : null))
         .catch(() => null)
     )
   );
-  const views = new Map();
-  let total = 0;
-  for (const list of lists.filter(Boolean).slice(0, DAYS)) {
-    for (const a of list) {
-      if (SKIP.test(a.article)) continue;
-      const title = a.article.replace(/_/g, ' ');
-      views.set(title, (views.get(title) || 0) + a.views);
-      total += a.views;
-    }
-  }
-  for (const [t, v] of views) views.set(t, v / (total || 1));
-  return views;
+  return lists
+    .filter(Boolean)
+    .slice(0, LOOKBACK)
+    .map((list) => {
+      const kept = list.filter((a) => !SKIP.test(a.article));
+      const total = kept.reduce((n, a) => n + a.views, 0) || 1;
+      return new Map(kept.map((a) => [a.article.replace(/_/g, ' '), a.views / total]));
+    });
 }
 
-// Films and series together, so one Wikidata query serves both catalogs.
-async function fromWiki(wiki, lang) {
-  const shares = await topArticles(wiki);
-  if (!shares.size) return [];
-  const found = await wikidata.itemsForWikiTitles([...shares.keys()], wiki, lang);
-  return Object.entries(found).map(([title, item]) => ({ ...item, score: shares.get(title) || 0 }));
+// Trending: average share over the newest DAYS days.
+function readership(days) {
+  const out = new Map();
+  for (const d of days.slice(0, DAYS)) {
+    for (const [t, v] of d) out.set(t, (out.get(t) || 0) + v / DAYS);
+  }
+  return out;
+}
+
+// Very Trending (PLACEHOLDER until a non-Wikipedia source is chosen): how
+// much a title's share on the newest day beats its average over the days
+// before. A title new to the top list jumps by its whole share.
+function spike(days) {
+  const [today, ...before] = days;
+  const out = new Map();
+  if (!today || !before.length) return out;
+  for (const [t, v] of today) {
+    const base = before.reduce((n, d) => n + (d.get(t) || 0), 0) / before.length;
+    if (v > base) out.set(t, v - base);
+  }
+  return out;
+}
+
+// Films and series together, so one Wikidata query serves both catalogs and
+// both modes (the title list, and so the query, is the same).
+async function fromWiki(wiki, lang, mode) {
+  const days = await dailyShares(wiki);
+  const titles = readership(days);
+  if (!titles.size) return [];
+  const scores = mode === 'spike' ? spike(days) : titles;
+  const found = await wikidata.itemsForWikiTitles([...titles.keys()], wiki, lang);
+  return Object.entries(found)
+    .filter(([title]) => scores.has(title))
+    .map(([title, item]) => ({ ...item, score: scores.get(title) }));
 }
 
 // [{ imdb, qid, name, year, score }] most-read first.
 const GLOBAL = (process.env.TREND_WIKIS || 'en,de,fr,es,it,ja').split(',');
 const LOCAL_WEIGHT = Number(process.env.TREND_LOCAL_WEIGHT || 3);
 
-async function trending(type, lang) {
+async function trending(type, lang, mode = 'trending') {
   const wikis = [...new Set([...GLOBAL, lang])];
   const lists = await Promise.all(
     wikis.map((w) =>
-      fromWiki(w, lang)
+      fromWiki(w, lang, mode)
         .then((items) => items.map((x) => ({ ...x, wiki: w })))
         .catch(() => [])
     )
@@ -86,4 +117,4 @@ async function trending(type, lang) {
     .sort((a, b) => b.score - a.score);
 }
 
-module.exports = { trending };
+module.exports = { trending, spike };

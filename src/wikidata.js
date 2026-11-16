@@ -82,25 +82,17 @@ async function search(type, query, lang, limit = 40) {
   return dedupeRows(rows);
 }
 
-// Films, most popular first. Wikidata has no view counts, so the number of
-// Wikipedia editions with an article (sitelinks) stands in for popularity.
-// Matching a date range in SPARQL times out, so candidates come from
-// full-text search: bot-written English descriptions start with the year
-// ("2025 film directed by ..."). The 1000 most-linked candidates are then
-// re-ranked by sitelinks.
-//
-// Without a genre: films first released this year or last (re-releases
-// dropped). With a genre (a list of Wikidata ids from genres.js): all years,
-// so a genre always has enough titles to browse.
+// Classics: the best-known films or series of all time, optionally in one
+// genre. Wikidata has no view counts, so the number of Wikipedia editions
+// with an article (sitelinks) stands in for fame. Candidates come from
+// full-text search (the 1000 most-linked-to items of the type and genre),
+// then get re-ranked by sitelinks. Films not out yet are dropped.
 const POPULAR_POOL = 1000;
 
-async function popularMovies(lang, skip = 0, pageSize = 100, genreIds = null) {
-  const year = new Date().getUTCFullYear();
-  const classes = FILM_CLASSES.map((c) => `P31=${c}`).join('|');
-  const filter = genreIds
-    ? `haswbstatement:${genreIds.map((g) => `P136=${g}|P31=${g}`).join('|')}`
-    : `"${year} film" OR "${year - 1} film"`;
-  const srsearch = `${filter} haswbstatement:P345 haswbstatement:${classes}`;
+async function classics(type, lang, skip = 0, pageSize = 100, genreIds = null) {
+  const classes = CLASSES[type].map((c) => `P31=${c}`).join('|');
+  const genre = genreIds ? ` haswbstatement:${genreIds.map((g) => `P136=${g}|P31=${g}`).join('|')}` : '';
+  const srsearch = `haswbstatement:P345 haswbstatement:${classes}${genre}`;
   const rows = await sparql(
     `SELECT ?item ?imdb ?label ?date ?links WHERE {
       SERVICE wikibase:mwapi {
@@ -110,7 +102,7 @@ async function popularMovies(lang, skip = 0, pageSize = 100, genreIds = null) {
         ?item wikibase:apiOutputItem mwapi:title.
       }
       ?item wdt:P345 ?imdb; wikibase:sitelinks ?links. FILTER(STRSTARTS(?imdb, "tt"))
-      OPTIONAL { ?item wdt:P577 ?date. }
+      OPTIONAL { ?item wdt:${type === 'movie' ? 'P577' : 'P580'} ?date. }
       ${labelClause(lang)}
     }`,
     12 * 3600,
@@ -118,8 +110,7 @@ async function popularMovies(lang, skip = 0, pageSize = 100, genreIds = null) {
   );
   const links = new Map(rows.map((r) => [r.imdb.value, Number(r.links.value)]));
   return dedupeRows(rows)
-    .filter((x) => releasedBy(x))
-    .filter((x) => genreIds || (x.year && Number(x.year) >= year - 1 && Number(x.year) <= year))
+    .filter((x) => type !== 'movie' || releasedBy(x))
     .sort((a, b) => links.get(b.imdb) - links.get(a.imdb))
     .slice(skip, skip + pageSize);
 }
@@ -298,23 +289,37 @@ async function itemsForWikiTitles(titles, wiki, lang) {
   const film = new Set(FILM_CLASSES);
   const classes = [...FILM_CLASSES, ...SERIES_CLASSES].map((c) => 'wd:' + c).join(' ');
   const rows = await sparql(
-    `SELECT ?title ?item ?cls ?imdb ?label ?date WHERE {
+    `SELECT ?title ?item ?cls ?imdb ?label ?date ?genre WHERE {
       VALUES ?title { ${titles.map((t) => str(t) + '@' + wiki).join(' ')} }
       ?article schema:name ?title; schema:isPartOf <https://${wiki}.wikipedia.org/>; schema:about ?item.
       VALUES ?cls { ${classes} }
       ?item wdt:P31 ?cls; wdt:P345 ?imdb. FILTER(STRSTARTS(?imdb, "tt"))
       OPTIONAL { ?item wdt:P577|wdt:P580 ?date. }
+      OPTIONAL { ?item wdt:P136 ?genre. }
       ${labelClause(lang)}
     }`,
     6 * 3600,
     45000 // hundreds of titles: slower than the default deadline
   );
   const byImdb = new Map(dedupeRows(rows).map((x) => [x.imdb, x]));
+  // Genres: P136 values plus classes (P31), so "anime television series"
+  // and "animated film" match their genre filters.
+  const genresOf = new Map();
+  for (const r of rows) {
+    const set = genresOf.get(r.imdb.value) || new Set();
+    set.add(qid(r.cls.value));
+    if (r.genre) set.add(qid(r.genre.value));
+    genresOf.set(r.imdb.value, set);
+  }
   const out = {};
   for (const r of rows) {
     const x = byImdb.get(r.imdb.value);
     if (!x || out[r.title.value]) continue;
-    out[r.title.value] = { ...x, type: film.has(qid(r.cls.value)) ? 'movie' : 'series' };
+    out[r.title.value] = {
+      ...x,
+      type: film.has(qid(r.cls.value)) ? 'movie' : 'series',
+      genres: [...genresOf.get(r.imdb.value)],
+    };
   }
   return out;
 }
@@ -322,7 +327,7 @@ async function itemsForWikiTitles(titles, wiki, lang) {
 module.exports = {
   releasedBy,
   search,
-  popularMovies,
+  classics,
   labelsByImdb,
   details,
   itemForImdb,

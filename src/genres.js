@@ -1,73 +1,77 @@
 // Genre filters shown in Stremio's Discover. Stremio sends back the option
-// text, so each language gets its own option names mapped to the same ids.
+// text, so each language gets its own option names mapped to the same genre.
 //
-// Movies: Wikidata genre items (matched on P136 genre, or P31 for
-// "animated film", which Wikidata often records as the item's class).
-// Series: TVmaze's own genre names.
+// Each genre lists the Wikidata items that mean it: film genres, the
+// matching TV genres (Wikidata keeps "drama film" and "drama television
+// series" apart) and, for animation and anime, classes (P31). `maze` is
+// TVmaze's own genre name, used by the Airing now list.
 
-const MOVIE = [
-  { id: ['Q188473'], en: 'Action', he: 'פעולה' },
-  { id: ['Q319221'], en: 'Adventure', he: 'הרפתקאות' },
-  { id: ['Q202866', 'Q29168811'], en: 'Animation', he: 'אנימציה' },
-  { id: ['Q645928'], en: 'Biography', he: 'ביוגרפיה' },
-  { id: ['Q157443', 'Q860626'], en: 'Comedy', he: 'קומדיה' },
-  { id: ['Q959790'], en: 'Crime', he: 'פשע' },
-  { id: ['Q93204'], en: 'Documentary', he: 'תיעודי' },
-  { id: ['Q130232'], en: 'Drama', he: 'דרמה' },
-  { id: ['Q1361932'], en: 'Family', he: 'משפחה' },
-  { id: ['Q157394'], en: 'Fantasy', he: 'פנטזיה' },
-  { id: ['Q17013749'], en: 'History', he: 'היסטוריה' },
-  { id: ['Q200092'], en: 'Horror', he: 'אימה' },
-  { id: ['Q842256'], en: 'Musical', he: 'מוזיקלי' },
-  { id: ['Q1200678'], en: 'Mystery', he: 'מסתורין' },
-  { id: ['Q1054574', 'Q860626'], en: 'Romance', he: 'רומנטי' },
-  { id: ['Q471839'], en: 'Sci-Fi', he: 'מדע בדיוני' },
-  { id: ['Q1535153'], en: 'Superhero', he: 'גיבורי-על' },
-  { id: ['Q2484376'], en: 'Thriller', he: 'מתח' },
-  { id: ['Q369747'], en: 'War', he: 'מלחמה' },
-  { id: ['Q172980'], en: 'Western', he: 'מערבון' },
+const GENRES = [
+  { key: 'action', en: 'Action', he: 'פעולה', maze: 'Action', ids: ['Q188473', 'Q343782'] },
+  { key: 'adventure', en: 'Adventure', he: 'הרפתקאות', maze: 'Adventure', ids: ['Q319221', 'Q56064758'] },
+  {
+    key: 'animation', en: 'Animation', he: 'אנימציה',
+    ids: ['Q202866', 'Q29168811', 'Q581714', 'Q4765080'],
+  },
+  { key: 'anime', en: 'Anime', he: 'אנימה', maze: 'Anime', ids: ['Q1107', 'Q63952888'], series: true },
+  { key: 'biography', en: 'Biography', he: 'ביוגרפיה', ids: ['Q645928'], movie: true },
+  { key: 'children', en: 'Children', he: 'ילדים', maze: 'Children', ids: [], series: true },
+  {
+    key: 'comedy', en: 'Comedy', he: 'קומדיה', maze: 'Comedy',
+    ids: ['Q157443', 'Q860626', 'Q9335576', 'Q21010853', 'Q170238', 'Q53094', 'Q20652466', 'Q4765080'],
+  },
+  { key: 'crime', en: 'Crime', he: 'פשע', maze: 'Crime', ids: ['Q959790', 'Q9335577', 'Q19367312', 'Q113485322'] },
+  { key: 'documentary', en: 'Documentary', he: 'תיעודי', maze: 'Documentary', ids: ['Q93204'] },
+  {
+    key: 'drama', en: 'Drama', he: 'דרמה', maze: 'Drama',
+    ids: ['Q130232', 'Q1366112', 'Q1786567', 'Q7210294', 'Q63214877'],
+  },
+  { key: 'family', en: 'Family', he: 'משפחה', maze: 'Family', ids: ['Q1361932'] },
+  { key: 'fantasy', en: 'Fantasy', he: 'פנטזיה', maze: 'Fantasy', ids: ['Q157394', 'Q98526245'] },
+  { key: 'history', en: 'History', he: 'היסטוריה', maze: 'History', ids: ['Q17013749', 'Q116514801'] },
+  { key: 'horror', en: 'Horror', he: 'אימה', maze: 'Horror', ids: ['Q200092', 'Q20220309', 'Q109629396'] },
+  { key: 'legal', en: 'Legal', he: 'משפטי', maze: 'Legal', ids: [], series: true },
+  { key: 'medical', en: 'Medical', he: 'רפואי', maze: 'Medical', ids: ['Q1786567'], series: true },
+  { key: 'musical', en: 'Musical', he: 'מוזיקלי', ids: ['Q842256'], movie: true },
+  { key: 'mystery', en: 'Mystery', he: 'מסתורין', maze: 'Mystery', ids: ['Q1200678', 'Q101898470'] },
+  { key: 'romance', en: 'Romance', he: 'רומנטי', maze: 'Romance', ids: ['Q1054574', 'Q860626', 'Q84270297'] },
+  {
+    key: 'scifi', en: 'Sci-Fi', he: 'מדע בדיוני', maze: 'Science-Fiction',
+    ids: ['Q471839', 'Q140472311', 'Q468478'],
+  },
+  { key: 'sports', en: 'Sports', he: 'ספורט', maze: 'Sports', ids: ['Q1339864'] },
+  { key: 'superhero', en: 'Superhero', he: 'גיבורי-על', ids: ['Q1535153'], movie: true },
+  { key: 'supernatural', en: 'Supernatural', he: 'על-טבעי', maze: 'Supernatural', ids: [], series: true },
+  {
+    key: 'thriller', en: 'Thriller', he: 'מתח', maze: 'Thriller',
+    ids: ['Q2484376', 'Q67175872', 'Q109733304', 'Q19367312'],
+  },
+  { key: 'war', en: 'War', he: 'מלחמה', maze: 'War', ids: ['Q369747'] },
+  { key: 'western', en: 'Western', he: 'מערבון', maze: 'Western', ids: ['Q172980', 'Q78528852'] },
 ];
 
-const SERIES = [
-  { id: 'Action', he: 'פעולה' },
-  { id: 'Adventure', he: 'הרפתקאות' },
-  { id: 'Anime', he: 'אנימה' },
-  { id: 'Children', he: 'ילדים' },
-  { id: 'Comedy', he: 'קומדיה' },
-  { id: 'Crime', he: 'פשע' },
-  { id: 'Documentary', he: 'תיעודי' },
-  { id: 'Drama', he: 'דרמה' },
-  { id: 'Family', he: 'משפחה' },
-  { id: 'Fantasy', he: 'פנטזיה' },
-  { id: 'History', he: 'היסטוריה' },
-  { id: 'Horror', he: 'אימה' },
-  { id: 'Legal', he: 'משפטי' },
-  { id: 'Medical', he: 'רפואי' },
-  { id: 'Mystery', he: 'מסתורין' },
-  { id: 'Romance', he: 'רומנטי' },
-  { id: 'Science-Fiction', he: 'מדע בדיוני' },
-  { id: 'Sports', he: 'ספורט' },
-  { id: 'Supernatural', he: 'על-טבעי' },
-  { id: 'Thriller', he: 'מתח' },
-  { id: 'War', he: 'מלחמה' },
-  { id: 'Western', he: 'מערבון' },
-].map((g) => ({ ...g, en: g.id }));
+// Which genres a list offers. `source` is 'wikidata' (needs ids) or
+// 'tvmaze' (needs a TVmaze name).
+function available(type, source) {
+  return GENRES.filter((g) => {
+    if (type === 'movie' && g.series) return false;
+    if (type === 'series' && g.movie) return false;
+    return source === 'tvmaze' ? Boolean(g.maze) : g.ids.length > 0;
+  });
+}
 
-const TABLES = { movie: MOVIE, series: SERIES };
-
-function name(g, lang) {
+function label(g, lang) {
   return g[lang] || g.en;
 }
 
-function options(type, lang) {
-  return TABLES[type].map((g) => name(g, lang));
+function options(type, lang, source = 'wikidata') {
+  return available(type, source).map((g) => label(g, lang));
 }
 
-// Option text (in any language) back to the genre's id.
-function lookup(type, text, lang) {
+// Option text (in the install's language or English) back to the genre.
+function lookup(type, text, lang, source = 'wikidata') {
   if (!text) return null;
-  const g = TABLES[type].find((x) => name(x, lang) === text || x.en === text);
-  return g ? g.id : null;
+  return available(type, source).find((g) => label(g, lang) === text || g.en === text) || null;
 }
 
 module.exports = { options, lookup };

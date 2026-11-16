@@ -122,11 +122,11 @@ test('server routes manifest, language prefix and extras', async () => {
   }
 });
 
-test('genre option text maps back to its id in either language; unknown genre is empty', async () => {
+test('genre filters: option text in either language, on every list', async () => {
   let seen;
   const undo = [
-    stub(wikidata, 'popularMovies', async (lang, skip, size, genre) => {
-      seen = genre;
+    stub(wikidata, 'classics', async (type, lang, skip, size, genre) => {
+      seen = [type, genre];
       return [{ imdb: 'tt1', name: 'x', year: '2020' }];
     }),
     stub(tvmaze, 'airingNow', async () => [
@@ -136,18 +136,31 @@ test('genre option text maps back to its id in either language; unknown genre is
   ];
   try {
     await addon.catalog('movie', 'wikimaze-popular', { genre: 'קומדיה' }, 'he');
-    assert.deepStrictEqual(seen, ['Q157443', 'Q860626']);
-    await addon.catalog('movie', 'wikimaze-popular', { genre: 'Comedy' }, 'he');
-    assert.deepStrictEqual(seen, ['Q157443', 'Q860626']);
+    assert.strictEqual(seen[0], 'movie');
+    assert.ok(seen[1].includes('Q157443'));
+    await addon.catalog('series', 'wikimaze-classics', { genre: 'Comedy' }, 'he');
+    assert.strictEqual(seen[0], 'series');
+    assert.ok(seen[1].includes('Q9335576'));
     assert.deepStrictEqual(await addon.catalog('movie', 'wikimaze-popular', { genre: 'Nope' }, 'en'), []);
 
     const drama = await addon.catalog('series', 'wikimaze-airing', { genre: 'Drama' }, 'en');
     assert.deepStrictEqual(drama.map((m) => m.id), ['tt10']);
 
     const man = addon.manifest('he');
-    const browse = man.catalogs.filter((c) => c.id !== 'wikimaze-trending');
-    assert.ok(browse.every((c) => c.extra.some((e) => e.name === 'genre')));
+    assert.ok(man.catalogs.every((c) => c.extra.some((e) => e.name === 'genre' && e.options.length > 5)));
     assert.ok(man.catalogs.every((c) => !c.extra.some((e) => e.isRequired)));
+    assert.deepStrictEqual(
+      man.catalogs.map((c) => c.name),
+      [
+        'WikiMovies - Trending',
+        'WikiSeries - Trending',
+        'WikiMovies - Very Trending',
+        'WikiSeries - Very Trending',
+        'WikiMovies - Classics',
+        'WikiSeries - Classics',
+        'WikiSeries - Airing now',
+      ]
+    );
   } finally {
     undo.forEach((u) => u());
   }
@@ -227,4 +240,16 @@ test('releasedBy: out, out within two weeks, or a past year', () => {
   const year = new Date().getUTCFullYear();
   assert.ok(wikidata.releasedBy({ year: String(year - 1) }));
   assert.ok(!wikidata.releasedBy({ year: String(year) }));
+});
+
+test('spike: newest day against the average of the days before', () => {
+  const { spike } = require('../src/trending');
+  const days = [
+    new Map([['New', 0.3], ['Steady', 0.2], ['Fading', 0.1]]),
+    new Map([['Steady', 0.2], ['Fading', 0.4]]),
+    new Map([['Steady', 0.2], ['Fading', 0.4]]),
+  ];
+  const s = spike(days);
+  assert.deepStrictEqual([...s.keys()], ['New']);
+  assert.ok(Math.abs(s.get('New') - 0.3) < 1e-9);
 });

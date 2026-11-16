@@ -15,6 +15,10 @@ const PAGE = 100;
 const metahub = (kind, imdb, size = 'medium') =>
   `https://images.metahub.space/${kind}/${size}/${imdb}/img`;
 
+function genreExtra(type, lang, source) {
+  return { name: 'genre', options: genres.options(type, lang, source) };
+}
+
 function manifest(lang) {
   const suffix = lang === 'en' ? '' : ` (${lang})`;
   return {
@@ -32,19 +36,30 @@ function manifest(lang) {
     // on it (like Cinemeta), so Discover always has a list to show and
     // Stremio's search bar still reaches it.
     catalogs: [
-      { type: 'movie', id: 'wikimaze-trending', name: 'WikiMaze Trending', extra: [{ name: 'skip' }] },
-      { type: 'series', id: 'wikimaze-trending', name: 'WikiMaze Trending', extra: [{ name: 'skip' }] },
+      { type: 'movie', id: 'wikimaze-trending', name: 'WikiMovies - Trending', extra: [genreExtra('movie', lang), { name: 'skip' }] },
+      { type: 'series', id: 'wikimaze-trending', name: 'WikiSeries - Trending', extra: [genreExtra('series', lang), { name: 'skip' }] },
+      // Very Trending movies: Wikipedia one-day spike, a PLACEHOLDER source
+      // (see trending.js). Very Trending series: TVmaze, shows with a new
+      // episode in the last two days by TVmaze's popularity weight.
+      { type: 'movie', id: 'wikimaze-hot', name: 'WikiMovies - Very Trending', extra: [genreExtra('movie', lang), { name: 'skip' }] },
+      { type: 'series', id: 'wikimaze-hot', name: 'WikiSeries - Very Trending', extra: [genreExtra('series', lang, 'tvmaze'), { name: 'skip' }] },
       {
         type: 'movie',
         id: 'wikimaze-popular',
-        name: 'WikiMaze Popular',
-        extra: [{ name: 'search' }, { name: 'genre', options: genres.options('movie', lang) }, { name: 'skip' }],
+        name: 'WikiMovies - Classics',
+        extra: [{ name: 'search' }, genreExtra('movie', lang), { name: 'skip' }],
+      },
+      {
+        type: 'series',
+        id: 'wikimaze-classics',
+        name: 'WikiSeries - Classics',
+        extra: [{ name: 'search' }, genreExtra('series', lang), { name: 'skip' }],
       },
       {
         type: 'series',
         id: 'wikimaze-airing',
-        name: 'WikiMaze Airing now',
-        extra: [{ name: 'search' }, { name: 'genre', options: genres.options('series', lang) }, { name: 'skip' }],
+        name: 'WikiSeries - Airing now',
+        extra: [genreExtra('series', lang, 'tvmaze'), { name: 'skip' }],
       },
     ],
     behaviorHints: { configurable: true },
@@ -95,20 +110,24 @@ async function catalog(type, id, extra, lang) {
   if (q) return type === 'movie' ? searchMovies(q, lang) : searchSeries(q, lang);
   if (id === 'wikimaze-search') return [];
 
-  const genre = genres.lookup(type, extra.genre, lang);
+  const source = id === 'wikimaze-airing' || (type === 'series' && id === 'wikimaze-hot') ? 'tvmaze' : 'wikidata';
+  const genre = genres.lookup(type, extra.genre, lang, source);
   if (extra.genre && !genre) return [];
 
-  if (id === 'wikimaze-trending') {
-    const rows = (await trending(type, lang)).slice(skip, skip + PAGE);
+  if (id === 'wikimaze-trending' || (type === 'movie' && id === 'wikimaze-hot')) {
+    const wanted = genre && new Set(genre.ids);
+    const all = await trending(type, lang, id === 'wikimaze-hot' ? 'spike' : 'trending');
+    const rows = (wanted ? all.filter((r) => (r.genres || []).some((g) => wanted.has(g))) : all).slice(skip, skip + PAGE);
     return rows.map((r) => (type === 'movie' ? moviePreview(r) : wikidataSeriesPreview(r)));
   }
-  if (type === 'movie' && id === 'wikimaze-popular') {
-    const rows = await wikidata.popularMovies(lang, skip, PAGE, genre);
-    return rows.map(moviePreview);
+  if ((type === 'movie' && id === 'wikimaze-popular') || (type === 'series' && id === 'wikimaze-classics')) {
+    const rows = await wikidata.classics(type, lang, skip, PAGE, genre && genre.ids);
+    return rows.map((r) => (type === 'movie' ? moviePreview(r) : wikidataSeriesPreview(r)));
   }
-  if (type === 'series' && id === 'wikimaze-airing') {
-    const shows = (await tvmaze.airingNow()).filter(
-      (s) => s.externals && s.externals.imdb && (!genre || (s.genres || []).includes(genre))
+  if (type === 'series' && (id === 'wikimaze-airing' || id === 'wikimaze-hot')) {
+    const recent = id === 'wikimaze-hot' ? tvmaze.airingNow(['US', 'GB', 'IL'], 2) : tvmaze.airingNow();
+    const shows = (await recent).filter(
+      (s) => s.externals && s.externals.imdb && (!genre || (s.genres || []).includes(genre.maze))
     );
     const page = shows.slice(skip, skip + PAGE);
     const names = await localNames(page.map((s) => s.externals.imdb), lang);

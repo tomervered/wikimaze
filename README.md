@@ -9,12 +9,17 @@ Every title is keyed by its IMDb id (`tt…`), so stream add-ons still match it,
 
 ## Catalogs
 
-| Catalog | Source |
+Every list has a genre filter. Search runs through the two Classics lists.
+
+| List | Source |
 | --- | --- |
-| Trending (movies, series) | The most-read films and shows on Wikipedia over the last 3 days, across six large language editions plus the install's own (Wikimedia page-view statistics). A title must trend in at least two editions, or in the install's own language, so one edition's local hit doesn't top the global list |
-| Popular movies | Films first released this year or last, ranked by how many Wikipedia editions have an article on them. With a genre picked: that genre's films from all years, same ranking |
-| Airing now (series) | Shows with an episode in the last 7 days on US/UK TV or streaming, ranked by TVmaze's popularity weight, optionally filtered by TVmaze genre |
-| Search (both) | Wikidata full-text search, which matches titles in every language (searching "שובר שורות" in the English install finds Breaking Bad), plus TVmaze search for series |
+| WikiMovies / WikiSeries - Trending | The most-read films and shows on Wikipedia over the last 3 days, across six large language editions plus the install's own (Wikimedia page-view statistics, CC0). A title must trend in at least two editions, or in the install's own language |
+| WikiMovies - Very Trending | **Placeholder.** Films whose Wikipedia readership jumped most on the newest day compared with the week before. To be replaced by a non-Wikipedia source once a legal, commercially usable one exists (IMDb data is paid-only; TMDB and Trakt are non-commercial) |
+| WikiSeries - Very Trending | TVmaze: shows with a new episode in the last two days (US, UK, Israel, streaming), by TVmaze's popularity weight |
+| WikiMovies / WikiSeries - Classics | The best-known titles of all time on Wikidata, ranked by how many Wikipedia editions have an article on them |
+| WikiSeries - Airing now | TVmaze: shows with an episode in the last 7 days on US/UK TV or streaming, by TVmaze's popularity weight |
+
+Films that are not out yet, or out within two weeks, are left out of every movie list.
 
 ## Install
 
