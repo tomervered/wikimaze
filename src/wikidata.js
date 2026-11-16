@@ -163,147 +163,112 @@ async function labelsByImdb(imdbs, lang) {
   return out;
 }
 
-// Everything Wikidata knows about a title, already labelled in `lang`,
-// asking only for the fields the add-on shows. (The full Special:EntityData
-// record is 250-350 KB for a popular film, and its linked items then needed
-// a second query for their labels.) Each UNION branch returns rows of one
-// kind: the title's labels, descriptions, Wikipedia articles, plain values,
-// dates and runtime, or linked items (genre, director, cast, writer,
-// country) with their label and sitelink count. The branches go out as two
-// queries in parallel: one query with all of them runs about twice as long
-// on the query service.
-const LINKED = { P136: 'genres', P57: 'director', P161: 'cast', P58: 'writer', P495: 'country' };
-const LINK_LIMIT = { P161: 15, P58: 5 };
-
-function detailsQueries(imdb, lang) {
-  const chain = langChain(lang);
-  const langs = chain.map((l) => str(l)).join(', ');
-  const wikis = [...new Set([lang, 'en'])].map((l) => `<https://${l}.wikipedia.org/>`).join(', ');
-  const valueLabels = chain
-    .map((l, i) => `OPTIONAL { ?v rdfs:label ?l${i} FILTER(LANG(?l${i}) = ${str(l)}) }`)
-    .join(' ');
-  // Every branch names its predicate outright, so the query service can use
-  // its indexes (a computed predicate makes it scan).
-  const branches = [
-    `?item rdfs:label ?vl. FILTER(LANG(?vl) IN (${langs})) BIND("label" AS ?kind) BIND(LANG(?vl) AS ?v)`,
-    `?item schema:description ?vl. FILTER(LANG(?vl) IN (${langs})) BIND("desc" AS ?kind) BIND(LANG(?vl) AS ?v)`,
-    `?vl schema:about ?item; schema:isPartOf ?wiki. FILTER(?wiki IN (${wikis})) BIND("wiki" AS ?kind) BIND(STR(?wiki) AS ?v)`,
-    ...['P31', 'P8600'].map((p) => `?item wdt:${p} ?v. BIND("${p}" AS ?kind)`),
-    ...['P577', 'P580', 'P582'].map(
-      (p) => `?item p:${p} ?st. ?st psv:${p} ?tv; wikibase:rank ?r. FILTER(?r != wikibase:DeprecatedRank)
-      ?tv wikibase:timeValue ?v; wikibase:timePrecision ?prec. BIND("${p}" AS ?kind)`
-    ),
-    `?item p:P2047 ?st. ?st psv:P2047 ?q; wikibase:rank ?r. FILTER(?r != wikibase:DeprecatedRank)
-      ?q wikibase:quantityAmount ?v; wikibase:quantityUnit ?unit.
-      BIND(IF(?r = wikibase:PreferredRank, 1, 0) AS ?n) BIND("P2047" AS ?kind)`,
-    ...Object.keys(LINKED).map(
-      (p) => `?item p:${p} ?st. ?st ps:${p} ?v; wikibase:rank ?r. FILTER(?r != wikibase:DeprecatedRank)
-      OPTIONAL { ?st pq:P1545 ?ord. } OPTIONAL { ?v wikibase:sitelinks ?n. }
-      ${valueLabels}
-      BIND(COALESCE(${chain.map((_, i) => `?l${i}`).join(', ')}) AS ?vl) BIND("${p}" AS ?kind)`
-    ),
-  ];
-  const query = (list) => `SELECT ?item ?kind ?v ?vl ?n ?ord ?unit ?prec WHERE {
-    ?item wdt:P345 ${str(imdb)}.
-    { ${list.join('\n    } UNION {\n      ')} }
-  }`;
-  const own = branches.length - Object.keys(LINKED).length;
-  return [query(branches.slice(0, own)), query(branches.slice(own))];
+// The Wikidata item for an IMDb id, preferring one of the given type.
+async function itemForImdb(imdb, type) {
+  if (!/^tt\d+$/.test(imdb)) return null;
+  const rows = await sparql(
+    `SELECT ?item ?cls WHERE { ?item wdt:P345 ${str(imdb)}. OPTIONAL { ?item wdt:P31 ?cls. } }`,
+    7 * 24 * 3600,
+    4000
+  );
+  if (!rows.length) return null;
+  const wanted = new Set(CLASSES[type] || []);
+  const match = rows.find((r) => r.cls && wanted.has(qid(r.cls.value)));
+  return qid((match || rows[0]).item.value);
 }
 
-function pickLang(map, lang) {
-  for (const l of langChain(lang)) if (map[l]) return map[l];
+async function entity(id) {
+  const data = await getJson(`${ENTITY}${id}.json`, { ttl: 24 * 3600, timeout: 6000 });
+  return data && data.entities ? Object.values(data.entities)[0] : null;
+}
+
+async function labelsFor(ids, lang) {
+  const unique = [...new Set(ids)].filter((x) => /^Q\d+$/.test(x));
+  if (!unique.length) return {};
+  const rows = await sparql(
+    `SELECT ?item ?label WHERE {
+      VALUES ?item { ${unique.map((x) => 'wd:' + x).join(' ')} }
+      ${labelClause(lang)}
+    }`,
+    7 * 24 * 3600,
+    4000
+  );
+  const out = {};
+  for (const r of rows) {
+    const id = qid(r.item.value);
+    if (r.label && !isQidLabel(id, r.label.value)) out[id] = r.label.value;
+  }
+  return out;
+}
+
+// Statements of one property, preferred rank first, deprecated dropped.
+function claims(ent, prop) {
+  const list = (ent.claims && ent.claims[prop]) || [];
+  const live = list.filter((c) => c.rank !== 'deprecated' && c.mainsnak.datavalue);
+  const preferred = live.filter((c) => c.rank === 'preferred');
+  return (preferred.length ? preferred : live).map((c) => c.mainsnak.datavalue.value);
+}
+
+function allClaims(ent, prop) {
+  const list = (ent.claims && ent.claims[prop]) || [];
+  return list
+    .filter((c) => c.rank !== 'deprecated' && c.mainsnak.datavalue)
+    .map((c) => c.mainsnak.datavalue.value);
+}
+
+function pickText(map, lang) {
+  if (!map) return undefined;
+  for (const l of [lang, 'en', 'mul']) if (map[l]) return map[l].value;
   return undefined;
 }
 
-// Turns the query rows of one item into the details object.
-function detailsFromRows(rows, id, type, lang) {
-  const labels = {};
-  const descs = {};
-  const wikis = {};
-  const plain = {};
-  const dates = { P577: [], P580: [], P582: [] };
-  const durations = [];
-  const linked = Object.fromEntries(Object.keys(LINKED).map((k) => [k, new Map()]));
-
-  for (const r of rows) {
-    const kind = r.kind && r.kind.value;
-    const v = r.v && r.v.value;
-    if (!kind || v == null) continue;
-    if (kind === 'label') labels[v] = r.vl.value;
-    else if (kind === 'desc') descs[v] = r.vl.value;
-    else if (kind === 'wiki') wikis[v] = r.vl.value;
-    else if (kind === 'P31' || kind === 'P8600') (plain[kind] = plain[kind] || []).push(v);
-    else if (dates[kind]) {
-      if (Number(r.prec && r.prec.value) >= 9) dates[kind].push(v);
-    } else if (kind === 'P2047') {
-      durations.push({ amount: Number(v), unit: r.unit.value, preferred: r.n && r.n.value === '1' });
-    } else if (linked[kind]) {
-      const vid = qid(v);
-      const name = r.vl && r.vl.value;
-      if (!/^Q\d+$/.test(vid) || isQidLabel(vid, name) || linked[kind].has(vid)) continue;
-      const ord = r.ord ? Number(r.ord.value) : Infinity;
-      linked[kind].set(vid, { name, ord: Number.isFinite(ord) ? ord : Infinity, links: r.n ? Number(r.n.value) : 0 });
-    }
-  }
-
-  // Billing order when Wikidata has it (P1545), else best known first.
-  const names = (prop) => {
-    const list = [...linked[prop].values()].sort((a, b) => a.ord - b.ord || b.links - a.links);
-    const out = [...new Set(list.map((x) => x.name))];
-    return LINK_LIMIT[prop] ? out.slice(0, LINK_LIMIT[prop]) : out;
-  };
-  const earliest = (list) => list.sort()[0];
-
-  const released = earliest(dates[type === 'movie' ? 'P577' : 'P580']);
-  const ended = type === 'series' ? earliest(dates.P582) : undefined;
-  const duration = durations.find((d) => d.preferred) || durations[0];
-  let runtime;
-  if (duration && duration.unit.endsWith('/Q7727')) runtime = `${Math.round(duration.amount)} min`;
-  else if (duration && duration.unit.endsWith('/Q11574')) runtime = `${Math.round(duration.amount / 60)} min`;
-
-  const wikiUrl = wikis[`https://${lang}.wikipedia.org/`] || wikis['https://en.wikipedia.org/'];
-  return {
-    qid: id,
-    name: cleanTitle(pickLang(labels, lang)),
-    englishName: cleanTitle(pickLang(labels, 'en')),
-    description: pickLang(descs, lang),
-    released,
-    year: released && released.slice(0, 4),
-    endYear: ended && ended.slice(0, 4),
-    runtime,
-    genres: names('P136'),
-    director: names('P57'),
-    writer: names('P58'),
-    cast: names('P161'),
-    country: names('P495'),
-    tvmazeId: plain.P8600 && plain.P8600[0],
-    wikipedia: wikiUrl ? { url: wikiUrl } : undefined,
-  };
+function earliestDate(values) {
+  const dates = values
+    .filter((v) => v && v.time && v.precision >= 9)
+    .map((v) => ({ iso: v.time.replace(/^\+/, ''), precision: v.precision }))
+    .sort((a, b) => a.iso.localeCompare(b.iso));
+  return dates[0];
 }
 
+// Everything Wikidata knows about a title, already labelled in `lang`.
 async function details(imdb, type, lang) {
-  if (!/^tt\d+$/.test(imdb)) return null;
-  const parts = await Promise.all(detailsQueries(imdb, lang).map((q) => sparql(q, 24 * 3600, 8000)));
-  const rows = parts.flat();
-  if (!rows.length) return null;
+  const id = await itemForImdb(imdb, type);
+  if (!id) return null;
+  const ent = await entity(id);
+  if (!ent) return null;
 
-  // Several items can share an IMDb id; prefer one of the requested type.
-  const byItem = new Map();
-  for (const r of rows) {
-    const id = qid(r.item.value);
-    if (!byItem.has(id)) byItem.set(id, []);
-    byItem.get(id).push(r);
-  }
-  const wanted = new Set(CLASSES[type] || []);
-  let id = [...byItem.keys()][0];
-  for (const [item, list] of byItem) {
-    if (list.some((r) => r.kind && r.kind.value === 'P31' && wanted.has(qid(r.v.value)))) {
-      id = item;
-      break;
-    }
-  }
-  return detailsFromRows(byItem.get(id), id, type, lang);
+  const genreIds = allClaims(ent, 'P136').map((v) => v.id);
+  const directorIds = allClaims(ent, 'P57').map((v) => v.id);
+  const castIds = allClaims(ent, 'P161').map((v) => v.id).slice(0, 15);
+  const writerIds = allClaims(ent, 'P58').map((v) => v.id).slice(0, 5);
+  const countryIds = allClaims(ent, 'P495').map((v) => v.id);
+  const labels = await labelsFor([...genreIds, ...directorIds, ...castIds, ...writerIds, ...countryIds], lang).catch(() => ({}));
+  const names = (ids) => [...new Set(ids.map((x) => labels[x]).filter(Boolean))];
+
+  const released = earliestDate(allClaims(ent, type === 'movie' ? 'P577' : 'P580'));
+  const ended = type === 'series' ? earliestDate(allClaims(ent, 'P582')) : undefined;
+  const duration = claims(ent, 'P2047')[0];
+  let runtime;
+  if (duration && duration.unit.endsWith('/Q7727')) runtime = `${Math.round(Number(duration.amount))} min`;
+  else if (duration && duration.unit.endsWith('/Q11574')) runtime = `${Math.round(Number(duration.amount) / 60)} min`;
+
+  return {
+    qid: id,
+    name: cleanTitle(pickText(ent.labels, lang)),
+    englishName: cleanTitle(pickText(ent.labels, 'en')),
+    description: pickText(ent.descriptions, lang),
+    released: released && released.iso,
+    year: released && released.iso.slice(0, 4),
+    endYear: ended && ended.iso.slice(0, 4),
+    runtime,
+    genres: names(genreIds),
+    director: names(directorIds),
+    writer: names(writerIds),
+    cast: names(castIds),
+    country: names(countryIds),
+    tvmazeId: claims(ent, 'P8600')[0],
+    wikipedia: ent.sitelinks && (ent.sitelinks[`${lang}wiki`] || ent.sitelinks.enwiki),
+  };
 }
 
 // Map Wikipedia article titles (of the `wiki` language edition) to films and
@@ -339,7 +304,6 @@ module.exports = {
   popularMovies,
   labelsByImdb,
   details,
-  detailsQueries,
-  detailsFromRows,
+  itemForImdb,
   itemsForWikiTitles,
 };
