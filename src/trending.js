@@ -68,7 +68,7 @@ async function trending(type, lang) {
     )
   );
   const out = new Map();
-  for (const item of lists.flat().filter((x) => x.type === type)) {
+  for (const item of lists.flat().filter((x) => x.type === type && (type !== 'movie' || wikidata.releasedBy(x)))) {
     const local = item.wiki === lang && lang !== 'en';
     const weight = local ? LOCAL_WEIGHT : 1;
     const prev = out.get(item.imdb);

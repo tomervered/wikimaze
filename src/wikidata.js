@@ -118,9 +118,16 @@ async function popularMovies(lang, skip = 0, pageSize = 100, genreIds = null) {
   );
   const links = new Map(rows.map((r) => [r.imdb.value, Number(r.links.value)]));
   return dedupeRows(rows)
+    .filter((x) => releasedBy(x))
     .filter((x) => genreIds || (x.year && Number(x.year) >= year - 1 && Number(x.year) <= year))
     .sort((a, b) => links.get(b.imdb) - links.get(a.imdb))
     .slice(skip, skip + pageSize);
+}
+
+// The query service flattens a year-only date to January 1st, so a Jan 1
+// date is read as "some time that year".
+function isYearOnly(iso) {
+  return /-01-01T00:00:00Z$/.test(iso);
 }
 
 function dedupeRows(rows) {
@@ -128,17 +135,30 @@ function dedupeRows(rows) {
   for (const r of rows) {
     const imdb = r.imdb.value;
     const item = qid(r.item.value);
-    const year = r.date ? r.date.value.slice(0, 4) : undefined;
+    const iso = r.date ? r.date.value : undefined;
+    const year = iso ? iso.slice(0, 4) : undefined;
+    const exact = iso && !isYearOnly(iso) ? iso.slice(0, 10) : undefined;
     const prev = out.get(imdb);
     if (prev) {
       // Several dates: keep the earliest (the first release, not a re-release).
       if (year && (!prev.year || year < prev.year)) prev.year = year;
+      if (exact && (!prev.firstDate || exact < prev.firstDate)) prev.firstDate = exact;
       continue;
     }
     const name = r.label && !isQidLabel(item, r.label.value) ? cleanTitle(r.label.value) : undefined;
-    out.set(imdb, { imdb, qid: item, name, year });
+    out.set(imdb, { imdb, qid: item, name, year, firstDate: exact });
   }
   return [...out.values()].filter((x) => x.name);
+}
+
+// Out already, or out within `days` days. With only a year known, it counts
+// as out once that year is over.
+function releasedBy(x, days = 14) {
+  if (x.firstDate) {
+    const cutoff = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    return x.firstDate <= cutoff;
+  }
+  return Boolean(x.year) && Number(x.year) < new Date().getUTCFullYear();
 }
 
 // Labels for a batch of IMDb ids in one query: { tt..: { qid, name } }.
@@ -300,6 +320,7 @@ async function itemsForWikiTitles(titles, wiki, lang) {
 }
 
 module.exports = {
+  releasedBy,
   search,
   popularMovies,
   labelsByImdb,

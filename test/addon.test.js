@@ -161,11 +161,11 @@ test('trending: needs two editions or the viewer\'s own; local edition weighs mo
   };
   const items = {
     en: {
-      'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie' },
+      'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie', firstDate: '2020-01-02' },
       'Show (TV series)': { imdb: 'tt2', name: 'Show', type: 'series' },
-      'Solo Film': { imdb: 'tt9', name: 'Solo', type: 'movie' },
+      'Solo Film': { imdb: 'tt9', name: 'Solo', type: 'movie', firstDate: '2020-01-02' },
     },
-    de: { 'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie' } },
+    de: { 'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie', firstDate: '2020-01-02' } },
     he: { 'הבריחה': { imdb: 'tt3', name: 'הבריחה', type: 'series' }, 'סדרה': { imdb: 'tt2', name: 'Show', type: 'series' } },
   };
   const undo = stub(wikidata, 'itemsForWikiTitles', async (titles, wiki) => items[wiki] || {});
@@ -217,4 +217,14 @@ test('responses allow serving stale while refreshing; empty lists are kept brief
     undo.forEach((u) => u());
     server.close();
   }
+});
+
+test('releasedBy: out, out within two weeks, or a past year', () => {
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  assert.ok(wikidata.releasedBy({ firstDate: day(-30) }));
+  assert.ok(wikidata.releasedBy({ firstDate: day(10) }));
+  assert.ok(!wikidata.releasedBy({ firstDate: day(30) }));
+  const year = new Date().getUTCFullYear();
+  assert.ok(wikidata.releasedBy({ year: String(year - 1) }));
+  assert.ok(!wikidata.releasedBy({ year: String(year) }));
 });
