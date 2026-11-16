@@ -6,6 +6,7 @@ const pkg = require('../package.json');
 const wikidata = require('./wikidata');
 const tvmaze = require('./tvmaze');
 const genres = require('./genres');
+const { trending } = require('./trending');
 
 const PAGE = 100;
 
@@ -31,6 +32,8 @@ function manifest(lang) {
     // on it (like Cinemeta), so Discover always has a list to show and
     // Stremio's search bar still reaches it.
     catalogs: [
+      { type: 'movie', id: 'wikimaze-trending', name: 'WikiMaze Trending', extra: [{ name: 'skip' }] },
+      { type: 'series', id: 'wikimaze-trending', name: 'WikiMaze Trending', extra: [{ name: 'skip' }] },
       {
         type: 'movie',
         id: 'wikimaze-popular',
@@ -70,6 +73,10 @@ function seriesPreview(show, name) {
   };
 }
 
+function wikidataSeriesPreview(r) {
+  return { id: r.imdb, type: 'series', name: r.name, poster: metahub('poster', r.imdb), releaseInfo: r.year };
+}
+
 async function localNames(imdbs, lang) {
   if (lang === 'en') return {};
   try {
@@ -91,6 +98,10 @@ async function catalog(type, id, extra, lang) {
   const genre = genres.lookup(type, extra.genre, lang);
   if (extra.genre && !genre) return [];
 
+  if (id === 'wikimaze-trending') {
+    const rows = (await trending(type, lang)).slice(skip, skip + PAGE);
+    return rows.map((r) => (type === 'movie' ? moviePreview(r) : wikidataSeriesPreview(r)));
+  }
   if (type === 'movie' && id === 'wikimaze-popular') {
     const rows = await wikidata.popularMovies(lang, skip, PAGE, genre);
     return rows.map(moviePreview);
@@ -130,14 +141,7 @@ async function searchSeries(q, lang) {
     out.set(imdb, seriesPreview(s, lang === 'en' ? undefined : local && local.name));
   }
   for (const r of wd) {
-    if (out.has(r.imdb)) continue;
-    out.set(r.imdb, {
-      id: r.imdb,
-      type: 'series',
-      name: r.name,
-      poster: metahub('poster', r.imdb),
-      releaseInfo: r.year,
-    });
+    if (!out.has(r.imdb)) out.set(r.imdb, wikidataSeriesPreview(r));
   }
   return [...out.values()];
 }

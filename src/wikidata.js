@@ -29,10 +29,13 @@ function labelClause(lang, v = '?item', out = '?label') {
 }
 
 function sparql(query, ttl) {
-  const url = `${SPARQL}?format=json&query=${encodeURIComponent(query)}`;
-  return getJson(url, { ttl, accept: 'application/sparql-results+json' }).then(
-    (r) => (r ? r.results.bindings : [])
-  );
+  const accept = 'application/sparql-results+json';
+  const done = (r) => (r ? r.results.bindings : []);
+  // Long queries (hundreds of titles) go as a POST body.
+  if (query.length > 6000) {
+    return getJson(SPARQL, { ttl, accept, body: `format=json&query=${encodeURIComponent(query)}` }).then(done);
+  }
+  return getJson(`${SPARQL}?format=json&query=${encodeURIComponent(query)}`, { ttl, accept }).then(done);
 }
 
 function qid(uri) {
@@ -263,4 +266,31 @@ async function details(imdb, type, lang) {
   };
 }
 
-module.exports = { search, popularMovies, labelsByImdb, details, itemForImdb };
+// Map Wikipedia article titles (of the `wiki` language edition) to films and
+// series in one query: { 'Title': { imdb, qid, name, year, type } }.
+async function itemsForWikiTitles(titles, wiki, lang) {
+  if (!titles.length) return {};
+  const film = new Set(FILM_CLASSES);
+  const classes = [...FILM_CLASSES, ...SERIES_CLASSES].map((c) => 'wd:' + c).join(' ');
+  const rows = await sparql(
+    `SELECT ?title ?item ?cls ?imdb ?label ?date WHERE {
+      VALUES ?title { ${titles.map((t) => str(t) + '@' + wiki).join(' ')} }
+      ?article schema:name ?title; schema:isPartOf <https://${wiki}.wikipedia.org/>; schema:about ?item.
+      VALUES ?cls { ${classes} }
+      ?item wdt:P31 ?cls; wdt:P345 ?imdb. FILTER(STRSTARTS(?imdb, "tt"))
+      OPTIONAL { ?item wdt:P577|wdt:P580 ?date. }
+      ${labelClause(lang)}
+    }`,
+    6 * 3600
+  );
+  const byImdb = new Map(dedupeRows(rows).map((x) => [x.imdb, x]));
+  const out = {};
+  for (const r of rows) {
+    const x = byImdb.get(r.imdb.value);
+    if (!x || out[r.title.value]) continue;
+    out[r.title.value] = { ...x, type: film.has(qid(r.cls.value)) ? 'movie' : 'series' };
+  }
+  return out;
+}
+
+module.exports = { search, popularMovies, labelsByImdb, details, itemForImdb, itemsForWikiTitles };

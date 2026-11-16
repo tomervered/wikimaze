@@ -44,12 +44,18 @@ class HttpError extends Error {
   }
 }
 
-async function fetchOnce(url, accept) {
+async function fetchOnce(url, accept, body) {
   const host = new URL(url).host;
   return withHostSlot(host, async () => {
     for (let attempt = 0; ; attempt++) {
       const res = await fetch(url, {
-        headers: { 'User-Agent': USER_AGENT, Accept: accept },
+        method: body ? 'POST' : 'GET',
+        body,
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: accept,
+          ...(body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+        },
         redirect: 'follow',
         signal: AbortSignal.timeout(20000),
       });
@@ -67,14 +73,17 @@ async function fetchOnce(url, accept) {
 }
 
 // Fetch JSON with caching. Failed requests are not cached. Returns null on 404.
-function getJson(url, { ttl = 6 * 3600, accept = 'application/json' } = {}) {
+// `body` (a form-encoded string) makes it a POST, for queries too long for a
+// URL; the body is part of the cache key.
+function getJson(url, { ttl = 6 * 3600, accept = 'application/json', body } = {}) {
   const now = Date.now();
-  const hit = cache.get(url);
+  const key = body ? `${url}\n${body}` : url;
+  const hit = cache.get(key);
   if (hit && hit.expires > now) return hit.promise;
 
-  const promise = fetchOnce(url, accept);
-  cache.set(url, { expires: now + ttl * 1000, promise });
-  promise.catch(() => cache.delete(url));
+  const promise = fetchOnce(url, accept, body);
+  cache.set(key, { expires: now + ttl * 1000, promise });
+  promise.catch(() => cache.delete(key));
 
   if (cache.size > MAX_CACHE_ENTRIES) {
     // Drop the oldest tenth; Map keeps insertion order.

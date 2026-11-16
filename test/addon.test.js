@@ -145,9 +145,48 @@ test('genre option text maps back to its id in either language; unknown genre is
     assert.deepStrictEqual(drama.map((m) => m.id), ['tt10']);
 
     const man = addon.manifest('he');
-    assert.ok(man.catalogs.every((c) => c.extra.some((e) => e.name === 'genre')));
+    const browse = man.catalogs.filter((c) => c.id !== 'wikimaze-trending');
+    assert.ok(browse.every((c) => c.extra.some((e) => e.name === 'genre')));
     assert.ok(man.catalogs.every((c) => !c.extra.some((e) => e.isRequired)));
   } finally {
+    undo.forEach((u) => u());
+  }
+});
+
+test('trending merges English and local Wikipedia and keeps the asked type', async () => {
+  const undo = [
+    stub(wikidata, 'itemsForWikiTitles', async (titles, wiki) =>
+      wiki === 'en'
+        ? {
+            'Big Film': { imdb: 'tt1', name: 'Big', type: 'movie' },
+            'Show (TV series)': { imdb: 'tt2', name: 'Show', type: 'series' },
+          }
+        : { 'הבריחה': { imdb: 'tt3', name: 'הבריחה', type: 'series' }, 'סדרה': { imdb: 'tt2', name: 'Show', type: 'series' } }
+    ),
+  ];
+  // Fixed top-viewed lists; trending.js is reloaded so it picks up the stub.
+  const http = require('../src/http');
+  const realGet = http.getJson;
+  http.getJson = async (url) => ({
+    items: [
+      {
+        articles: url.includes('/en.wikipedia/')
+          ? [{ article: 'Main_Page', views: 9e9 }, { article: 'Big_Film', views: 600 }, { article: 'Show_(TV_series)', views: 400 }]
+          : [{ article: 'הבריחה', views: 50 }, { article: 'סדרה', views: 50 }],
+      },
+    ],
+  });
+  try {
+    delete require.cache[require.resolve('../src/trending')];
+    const fresh = require('../src/trending');
+    const series = await fresh.trending('series', 'he');
+    // tt2 has 0.4 (en) + 0.5 (he); tt3 has 0.5 (he).
+    assert.deepStrictEqual(series.map((x) => x.imdb), ['tt2', 'tt3']);
+    const movies = await fresh.trending('movie', 'en');
+    assert.deepStrictEqual(movies.map((x) => x.imdb), ['tt1']);
+  } finally {
+    http.getJson = realGet;
+    delete require.cache[require.resolve('../src/trending')];
     undo.forEach((u) => u());
   }
 });
