@@ -31,11 +31,13 @@ function labelClause(lang, v = '?item', out = '?label') {
 function sparql(query, ttl, timeout) {
   const accept = 'application/sparql-results+json';
   const done = (r) => (r ? r.results.bindings : []);
-  // Long queries (hundreds of titles) go as a POST body.
-  if (query.length > 6000) {
-    return getJson(SPARQL, { ttl, accept, timeout, body: `format=json&query=${encodeURIComponent(query)}` }).then(done);
+  // Long queries (hundreds of titles) go as a POST body. Measure the encoded
+  // form: quotes and spaces triple in size, and the server rejects long URLs.
+  const q = encodeURIComponent(query);
+  if (q.length > 6000) {
+    return getJson(SPARQL, { ttl, accept, timeout, body: `format=json&query=${q}` }).then(done);
   }
-  return getJson(`${SPARQL}?format=json&query=${encodeURIComponent(query)}`, { ttl, accept, timeout }).then(done);
+  return getJson(`${SPARQL}?format=json&query=${q}`, { ttl, accept, timeout }).then(done);
 }
 
 function qid(uri) {
