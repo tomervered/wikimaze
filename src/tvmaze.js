@@ -89,6 +89,14 @@ async function premieres(countries = ['US', 'GB', 'IL'], days = 30) {
     .sort((a, b) => (b.weight || 0) - (a.weight || 0));
 }
 
+// An Indian show: network or streaming channel in India, or an Indian
+// language (see wikidata.indianImdbs for the same rule on Wikidata).
+const INDIAN_LANGUAGES = ['Hindi', 'Tamil', 'Telugu', 'Malayalam', 'Kannada', 'Bengali', 'Marathi', 'Punjabi', 'Gujarati', 'Odia', 'Urdu'];
+function isIndian(show) {
+  const country = (c) => c && c.country && c.country.code === 'IN';
+  return Boolean(country(show.network) || country(show.webChannel) || INDIAN_LANGUAGES.includes(show.language));
+}
+
 function bestBackground(show) {
   const imgs = (show._embedded && show._embedded.images) || [];
   const bg = imgs.find((i) => i.type === 'background' && i.main) || imgs.find((i) => i.type === 'background');
@@ -101,4 +109,4 @@ function bestLogo(show) {
   return logo && logo.resolutions && logo.resolutions.original && logo.resolutions.original.url;
 }
 
-module.exports = { showByImdb, showFull, search, airingNow, premieres, stripHtml, image, bestBackground, bestLogo };
+module.exports = { isIndian, showByImdb, showFull, search, airingNow, premieres, stripHtml, image, bestBackground, bestLogo };

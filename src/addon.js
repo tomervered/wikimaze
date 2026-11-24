@@ -148,7 +148,7 @@ const ALL_TITLES_LIVE_BELOW = 100;
 // results carry no genre or year, so a filtered search stays in the store.
 async function withLive(rows, type, q, lang, filters, below = LIVE_BELOW) {
   if (rows.length >= below || filters.genre || filters.from || filters.to) return { rows, source: 'store' };
-  const extra = await live(type, q, lang).catch(() => []);
+  const extra = await live(type, q, lang, filters.india).catch(() => []);
   const have = new Set(rows.map((x) => x.id));
   const more = extra.filter((x) => x.id && !have.has(x.id));
   return { rows: [...rows, ...more], source: rows.length ? 'store+live' : 'live' };
@@ -168,20 +168,21 @@ function genreSource(type, id) {
 }
 
 // Live search on Wikidata and TVmaze.
-function live(type, q, lang) {
-  return type === 'movie' ? searchMovies(q, lang) : searchSeries(q, lang);
+function live(type, q, lang, india = false) {
+  return type === 'movie' ? searchMovies(q, lang, india) : searchSeries(q, lang, india);
 }
 
 // Rows for one catalog: a list (or the whole store) filtered by genre, year
 // and search text. Shared by Stremio catalogs and the JSON search API.
 //   returns { rows: store entries or previews, source: 'store' | 'live' }
-async function find(type, id, extra, lang, region = null) {
+async function findAll(type, id, extra, lang, region = null) {
+  const india = region === 'in';
   const { q, forced } = parseQuery(extra.search);
   // 'wikimaze-live' / 'wikimaze-search': ids older installs may still ask for.
   if (id === 'wikimaze-live' || id === 'wikimaze-search') {
-    return { rows: q ? await live(type, q, lang) : [], source: 'live' };
+    return { rows: q ? await live(type, q, lang, india) : [], source: 'live' };
   }
-  if (q && forced) return { rows: await live(type, q, lang), source: 'live' };
+  if (q && forced) return { rows: await live(type, q, lang, india), source: 'live' };
 
   const genre = genres.lookup(type, extra.genre, lang, genreSource(type, id)) ||
     (extra.genre && genres.byKey(extra.genre));
@@ -197,12 +198,12 @@ async function find(type, id, extra, lang, region = null) {
 
   if (id === 'wikimaze-library') {
     const titles = await snapshot.titles(lang);
-    if (!titles) return { rows: q ? await live(type, q, lang) : [], source: 'live' };
+    if (!titles) return { rows: q ? await live(type, q, lang, india) : [], source: 'live' };
     const rows = store.query(titles, filters);
     // All titles is the search engine: saved matches first, then every
     // Wikidata/TVmaze match not saved yet (unless genre/year filters are
     // on, which live results can't honour).
-    return q ? withLive(rows, type, q, lang, filters, ALL_TITLES_LIVE_BELOW) : { rows, source: 'store' };
+    return q ? withLive(rows, type, q, lang, { ...filters, india }, ALL_TITLES_LIVE_BELOW) : { rows, source: 'store' };
   }
 
   if (!lists.LISTS.includes(`${type}/${id}`)) return { rows: [], source: 'store' };
@@ -213,8 +214,16 @@ async function find(type, id, extra, lang, region = null) {
   const rows = store.query(byId, { ...filters, ids: all.map((x) => x.id) });
   // A search in any list shows the list's own matches first, then Wikidata
   // and TVmaze matches when the list has fewer than LIVE_BELOW.
-  if (q) return withLive(rows, type, q, lang, filters);
+  if (q) return withLive(rows, type, q, lang, { ...filters, india });
   return { rows, source: 'store' };
+}
+
+// Indian titles (store flag `in`, set by the snapshot build) are left out
+// everywhere unless the install's region is India.
+async function find(type, id, extra, lang, region = null) {
+  const res = await findAll(type, id, extra, lang, region);
+  if (region === 'in') return res;
+  return { ...res, rows: res.rows.filter((x) => !x.in) };
 }
 
 async function catalog(type, id, extra, lang, region = null) {
@@ -223,31 +232,32 @@ async function catalog(type, id, extra, lang, region = null) {
   return rows.slice(skip, skip + PAGE).map((x) => (x.poster !== undefined && x.g !== undefined ? store.preview(x) : x));
 }
 
-async function searchMovies(q, lang) {
+async function searchMovies(q, lang, india = false) {
   const rows = await wikidata.search('movie', q, lang);
-  return rows.map(moviePreview);
+  return rows.filter((r) => india || !r.indian).map(moviePreview);
 }
 
-async function searchSeries(q, lang) {
+async function searchSeries(q, lang, india = false) {
   // Both sources in parallel; one failing must not empty the results.
   const [maze, wd] = await Promise.all([
     tvmaze.search(q).catch(() => []),
     wikidata.search('series', q, lang).catch(() => []),
   ]);
   const out = new Map();
-  const mazeWithImdb = maze.filter((s) => s.externals && s.externals.imdb);
+  const mazeWithImdb = maze.filter((s) => s.externals && s.externals.imdb && (india || !tvmaze.isIndian(s)));
+  const indianWd = new Set(wd.filter((r) => r.indian).map((r) => r.imdb));
   const wdByImdb = new Map(wd.map((r) => [r.imdb, r]));
   const missing = mazeWithImdb.map((s) => s.externals.imdb).filter((x) => !wdByImdb.has(x));
   const names = await localNames(missing, lang);
 
   for (const s of mazeWithImdb) {
     const imdb = s.externals.imdb;
-    if (out.has(imdb)) continue;
+    if (out.has(imdb) || (!india && indianWd.has(imdb))) continue;
     const local = wdByImdb.get(imdb) || names[imdb];
     out.set(imdb, seriesPreview(s, lang === 'en' ? undefined : local && local.name));
   }
   for (const r of wd) {
-    if (!out.has(r.imdb)) out.set(r.imdb, wikidataSeriesPreview(r));
+    if (!out.has(r.imdb) && (india || !r.indian)) out.set(r.imdb, wikidataSeriesPreview(r));
   }
   return [...out.values()];
 }

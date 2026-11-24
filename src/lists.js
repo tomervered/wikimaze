@@ -77,6 +77,7 @@ function fromTvmaze(show, localName) {
     date: show.premiered,
     en: show.name,
     mz: show.genres || [],
+    in: tvmaze.isIndian(show) || undefined,
     g: genres.keysFor({ maze: show.genres || [] }),
   };
 }

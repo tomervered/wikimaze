@@ -13,6 +13,7 @@ const lists = require('../src/lists');
 const store = require('../src/store');
 const tvmaze = require('../src/tvmaze');
 const genres = require('../src/genres');
+const wikidata = require('../src/wikidata');
 const { REGIONS } = require('../src/trending');
 
 // TVmaze lookups per run for series that have none yet (TVmaze allows 20
@@ -41,6 +42,7 @@ async function addMazeGenres(titles, ids) {
     const show = await tvmaze.showByImdb(id).catch(() => undefined);
     if (show === undefined) continue; // failed: try again next run
     e.mz = show ? show.genres || [] : null;
+    if (show && tvmaze.isIndian(show)) e.mzIn = true;
     if (e.mz && e.mz.length) e.g = genres.keysFor({ maze: e.mz });
   }
   return n;
@@ -92,6 +94,18 @@ async function main() {
       .sort(([a], [b]) => (a.includes('trending') ? -1 : 0) - (b.includes('trending') ? -1 : 0))
       .flatMap(([, ids]) => ids);
     const looked = await addMazeGenres(merged.titles, [...new Set(seriesIds)]);
+    // Mark Indian titles (hidden unless the install's region is India).
+    const unknown = Object.values(merged.titles).filter((e) => !('in' in e)).map((e) => e.id);
+    try {
+      const indian = await wikidata.indianImdbs(unknown);
+      for (const id of unknown) merged.titles[id].in = indian.has(id);
+      console.log(`${lang}: ${indian.size} of ${unknown.length} new titles marked Indian`);
+    } catch (err) {
+      console.error(`${lang}: Indian check failed (${err.message}); retried next run`);
+    }
+    for (const e of Object.values(merged.titles)) {
+      if (e.type === 'series' && e.mzIn) e.in = true;
+    }
     const file = path.join(outDir, `${lang}.json`);
     fs.writeFileSync(file, JSON.stringify({ built: new Date().toISOString(), ...merged }));
     console.log(

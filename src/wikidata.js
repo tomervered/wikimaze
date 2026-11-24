@@ -65,7 +65,7 @@ async function search(type, query, lang, limit = 40) {
   if (!term) return [];
   const srsearch = `${term} haswbstatement:P345 haswbstatement:${classes}`;
   const rows = await sparql(
-    `SELECT ?item ?imdb ?label ?date ?ordinal WHERE {
+    `SELECT ?item ?imdb ?label ?date ?ordinal ?indian WHERE {
       SERVICE wikibase:mwapi {
         bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "Search";
                         mwapi:srsearch ${str(srsearch)}; mwapi:srlimit "${limit}".
@@ -74,12 +74,39 @@ async function search(type, query, lang, limit = 40) {
       }
       ?item wdt:P345 ?imdb. FILTER(STRSTARTS(?imdb, "tt"))
       OPTIONAL { ?item wdt:${type === 'movie' ? 'P577' : 'P580'} ?date. }
+      ${INDIAN_CLAUSE}
       ${labelClause(lang)}
     } ORDER BY ?ordinal`,
     3600,
     6000
   );
-  return dedupeRows(rows);
+  const indian = new Set(rows.filter((r) => r.indian).map((r) => r.imdb.value));
+  return dedupeRows(rows).map((x) => (indian.has(x.imdb) ? { ...x, indian: true } : x));
+}
+
+// Indian titles are left out unless the install's region is India (Tomer,
+// 2026-11-24). A title counts as Indian when its country of origin (P495)
+// is India or its original language (P364) is an Indian language.
+const INDIAN_LANGS = ['Q1568', 'Q5885', 'Q8097', 'Q36236', 'Q33673', 'Q9610', 'Q1571', 'Q58635', 'Q5137', 'Q33810', 'Q1617'];
+const INDIAN_CLAUSE = `OPTIONAL { ?item wdt:P495|wdt:P364 ?indian. VALUES ?indian { wd:Q668 ${INDIAN_LANGS.map((q) => 'wd:' + q).join(' ')} } }`;
+
+// IMDb ids (of the given ones) whose title is Indian.
+async function indianImdbs(imdbs) {
+  const out = new Set();
+  const ids = [...new Set(imdbs)].filter((x) => /^tt\d+$/.test(x));
+  for (let i = 0; i < ids.length; i += 400) {
+    const rows = await sparql(
+      `SELECT DISTINCT ?imdb WHERE {
+        VALUES ?imdb { ${ids.slice(i, i + 400).map((x) => `"${x}"`).join(' ')} }
+        ?item wdt:P345 ?imdb; wdt:P495|wdt:P364 ?c.
+        VALUES ?c { wd:Q668 ${INDIAN_LANGS.map((q) => 'wd:' + q).join(' ')} }
+      }`,
+      24 * 3600,
+      60000
+    );
+    for (const r of rows) out.add(r.imdb.value);
+  }
+  return out;
 }
 
 // Classics: the best-known films or series of all time, optionally in one
@@ -421,6 +448,7 @@ async function newFilms(lang, days = 30) {
 
 module.exports = {
   newFilms,
+  indianImdbs,
   releasedBy,
   search,
   classics,

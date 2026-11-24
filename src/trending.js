@@ -170,7 +170,7 @@ async function trending(type, lang, mode = 'trending') {
 //   final = REGION_WEIGHT * country share + (1 - REGION_WEIGHT) * global share
 // where each part is first scaled to sum to 1 over its own list, so a small
 // country's short list still counts in full.
-const REGIONS = ['us', 'gb', 'de', 'fr', 'es', 'it', 'pl', 'il', 'eg', 'jp', 'br'];
+const REGIONS = ['us', 'gb', 'de', 'fr', 'es', 'it', 'pl', 'il', 'eg', 'jp', 'br', 'in'];
 const REGION_WEIGHT = 0.6;
 const COUNTRY = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/top-per-country';
 

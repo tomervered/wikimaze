@@ -44,6 +44,7 @@ function entryOf(item, prev) {
   if (item.date) e.date = item.date;
   if (item.en && item.en !== item.name) e.en = item.en;
   if (item.mz) e.mz = item.mz;
+  if (item.in) e.in = true;
   // TVmaze genres win for series: Wikidata tags tone ("black comedy") as
   // genre, so Breaking Bad would otherwise show under Comedy.
   if (e.type === 'series' && e.mz && e.mz.length) e.g = genres.keysFor({ maze: e.mz });

@@ -32,6 +32,7 @@ const REGIONS = [
   ['eg', 'Egypt'],
   ['jp', 'Japan'],
   ['br', 'Brazil'],
+  ['in', 'India'],
 ];
 
 function configurePage(origin, lang, region = '') {

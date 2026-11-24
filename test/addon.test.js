@@ -298,7 +298,7 @@ test('regions: link prefix parses, manifest is named, unknown regions are ignore
   assert.ok(m.name.endsWith(' IL'));
   assert.strictEqual(addon.manifest('en', null, 'zz').id, 'community.wikimaze');
   const { REGIONS, REGION_WEIGHT } = require('../src/trending');
-  assert.deepStrictEqual(REGIONS, ['us', 'gb', 'de', 'fr', 'es', 'it', 'pl', 'il', 'eg', 'jp', 'br']);
+  assert.deepStrictEqual(REGIONS, ['us', 'gb', 'de', 'fr', 'es', 'it', 'pl', 'il', 'eg', 'jp', 'br', 'in']);
   assert.ok(REGION_WEIGHT > 0.5 && REGION_WEIGHT < 1);
 });
 
@@ -353,5 +353,24 @@ test('api: /api/genres and /he/api/genres answer JSON', async () => {
     assert.ok(JSON.parse(b2).genres.some((g) => g.label === 'קומדיה'));
   } finally {
     server.close();
+  }
+});
+
+test('india: Indian titles are hidden unless the region is India', async () => {
+  const tv = require('../src/tvmaze');
+  assert.ok(tv.isIndian({ network: { country: { code: 'IN' } } }));
+  assert.ok(tv.isIndian({ language: 'Hindi' }));
+  assert.ok(!tv.isIndian({ language: 'English', network: { country: { code: 'US' } } }));
+  const undo = [stub(wikidata, 'search', async () => [
+    { imdb: 'tt1', name: 'Local Hit', year: '2026', indian: true },
+    { imdb: 'tt2', name: 'Other', year: '2026' },
+  ])];
+  try {
+    const world = await addon.catalog('movie', 'wikimaze-live', { search: 'x' }, 'en');
+    assert.deepStrictEqual(world.map((m) => m.id), ['tt2']);
+    const india = await addon.catalog('movie', 'wikimaze-live', { search: 'x' }, 'en', 'in');
+    assert.deepStrictEqual(india.map((m) => m.id), ['tt1', 'tt2']);
+  } finally {
+    undo.forEach((u) => u());
   }
 });
