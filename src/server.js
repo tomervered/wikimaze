@@ -109,6 +109,10 @@ async function route(req, res) {
     const [, type, id] = parts;
     const meta = await addon.meta(type, decodeURIComponent(id), lang);
     if (!meta) return send(res, 404, { meta: null });
+    if (meta.partial) {
+      delete meta.partial;
+      return send(res, 200, { meta }, { maxAge: 300 });
+    }
     return send(res, 200, { meta }, { maxAge: 12 * 3600, stale: 7 * DAY });
   }
   return send(res, 404, { err: 'not found', url: req.url });

@@ -374,3 +374,24 @@ test('india: Indian titles are hidden unless the region is India', async () => {
     undo.forEach((u) => u());
   }
 });
+
+test('meta: Wikidata failing falls back to the stored title', async () => {
+  const snapshot = require('../src/snapshot');
+  const undo = [
+    stub(wikidata, 'details', async () => {
+      throw new Error('HTTP 503');
+    }),
+    stub(snapshot, 'titles', async () => ({
+      tt38773219: { id: 'tt38773219', type: 'movie', name: 'Ebenezer', poster: 'p', releaseInfo: '2026', g: ['drama'] },
+    })),
+  ];
+  try {
+    const m = await addon.meta('movie', 'tt38773219', 'en');
+    assert.strictEqual(m.name, 'Ebenezer');
+    assert.deepStrictEqual(m.genres, ['Drama']);
+    assert.ok(m.partial);
+    await assert.rejects(addon.meta('movie', 'tt0000001', 'en'), /503/);
+  } finally {
+    undo.forEach((u) => u());
+  }
+});

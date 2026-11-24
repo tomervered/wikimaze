@@ -44,6 +44,8 @@ jobs:
           git init -q -b data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add snapshot
+          # Vercel watches every branch; this one holds only data.
+          echo '{ "git": { "deploymentEnabled": false } }' > vercel.json
+          git add snapshot vercel.json
           git commit -q -m "List snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data

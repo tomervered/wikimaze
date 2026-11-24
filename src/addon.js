@@ -364,9 +364,39 @@ async function seriesMeta(imdb, lang) {
 async function meta(type, id, lang) {
   const imdb = id.split(':')[0];
   if (!/^tt\d+$/.test(imdb)) return null;
-  if (type === 'movie') return movieMeta(imdb, lang);
-  if (type === 'series') return seriesMeta(imdb, lang);
-  return null;
+  if (type !== 'movie' && type !== 'series') return null;
+  try {
+    const full = await (type === 'movie' ? movieMeta(imdb, lang) : seriesMeta(imdb, lang));
+    if (full) return full;
+  } catch (err) {
+    // Wikidata is often slow or busy for Vercel's servers. A title the store
+    // knows still gets a basic page instead of an error.
+    const basic = await storedMeta(type, imdb, lang);
+    if (basic) return basic;
+    throw err;
+  }
+  return storedMeta(type, imdb, lang);
+}
+
+// A short meta from the title store, marked `partial` so it is cached briefly.
+async function storedMeta(type, imdb, lang) {
+  const titles = await snapshot.titles(lang).catch(() => null);
+  const e = titles && titles[imdb];
+  if (!e || e.type !== type) return null;
+  return {
+    id: imdb,
+    type,
+    name: e.name,
+    poster: e.poster || metahub('poster', imdb),
+    background: metahub('background', imdb, 'large'),
+    logo: metahub('logo', imdb),
+    releaseInfo: e.releaseInfo,
+    released: e.date ? `${e.date}T00:00:00.000Z` : undefined,
+    genres: genres.all(lang).filter((g) => (e.g || []).includes(g.key)).map((g) => g.label),
+    behaviorHints: type === 'movie' ? { defaultVideoId: imdb } : undefined,
+    videos: type === 'series' ? [] : undefined,
+    partial: true,
+  };
 }
 
 module.exports = {
