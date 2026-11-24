@@ -146,6 +146,22 @@ function liveList(type, id, lang, region) {
   return promise;
 }
 
+// Fewer stored matches than this and All titles adds live results.
+const LIVE_BELOW = 20;
+
+const CLASSICS = ['wikimaze-popular', 'wikimaze-classics'];
+
+// Few stored matches: add Wikidata and TVmaze results after them, so a
+// search never finds less than it did before the store existed. Live
+// results carry no genre or year, so a filtered search stays in the store.
+async function withLive(rows, type, q, lang, filters) {
+  if (rows.length >= LIVE_BELOW || filters.genre || filters.from || filters.to) return { rows, source: 'store' };
+  const extra = await live(type, q, lang).catch(() => []);
+  const have = new Set(rows.map((x) => x.id));
+  const more = extra.filter((x) => x.id && !have.has(x.id));
+  return { rows: [...rows, ...more], source: rows.length ? 'store+live' : 'live' };
+}
+
 // "breaking bad!" forces a live search; the "!" is dropped.
 function parseQuery(raw) {
   const q = String(raw || '').trim();
@@ -190,9 +206,7 @@ async function find(type, id, extra, lang, region = null) {
     const titles = await snapshot.titles(lang);
     if (!titles) return { rows: q ? await live(type, q, lang) : [], source: 'live' };
     const rows = store.query(titles, filters);
-    // Nothing stored matches: ask Wikidata and TVmaze.
-    if (q && !rows.length) return { rows: await live(type, q, lang), source: 'live' };
-    return { rows, source: 'store' };
+    return q ? withLive(rows, type, q, lang, filters) : { rows, source: 'store' };
   }
 
   if (!lists.LISTS.includes(`${type}/${id}`)) return { rows: [], source: 'store' };
@@ -200,7 +214,11 @@ async function find(type, id, extra, lang, region = null) {
   const r = id === 'wikimaze-trending' && REGIONS.includes(region) ? region : null;
   const all = (await snapshot.list(type, id, lang, r)) || (await liveList(type, id, lang, r)) || [];
   const byId = Object.fromEntries(all.map((x) => [x.id, { ...x, year: x.year || parseInt(x.releaseInfo, 10) || undefined }]));
-  return { rows: store.query(byId, { ...filters, ids: all.map((x) => x.id) }), source: 'store' };
+  const rows = store.query(byId, { ...filters, ids: all.map((x) => x.id) });
+  // Classics stand for "all time": like before the store, a search there
+  // also reaches Wikidata and TVmaze when the list itself has few matches.
+  if (q && CLASSICS.includes(id)) return withLive(rows, type, q, lang, filters);
+  return { rows, source: 'store' };
 }
 
 async function catalog(type, id, extra, lang, region = null) {

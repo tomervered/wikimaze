@@ -153,7 +153,7 @@ async function api(res, name, params, pathLang, pathRegion) {
     genres: x.g,
     lists: x.seen ? Object.keys(x.seen) : undefined,
   }));
-  return send(res, 200, { source, total: rows.length, skip, results, facets: source === 'store' ? store.facets(rows) : undefined },
+  return send(res, 200, { source, total: rows.length, skip, results, facets: source !== 'live' ? store.facets(rows) : undefined },
     q ? { maxAge: 3600, stale: DAY } : { maxAge: 6 * 3600, stale: DAY });
 }
 
