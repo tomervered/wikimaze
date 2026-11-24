@@ -155,15 +155,15 @@ test('genre filters: option text in either language, on every list', async () =>
     assert.deepStrictEqual(
       man.catalogs.map((c) => c.name),
       [
-        'WikiMovies - Trending',
-        'WikiSeries - Trending',
-        'WikiMovies - Surging',
-        'WikiSeries - Surging',
-        'WikiMovies - Brand New',
-        'WikiSeries - Brand New',
-        'WikiMovies - Classics',
-        'WikiSeries - Classics',
-        'WikiSeries - Airing now',
+        'Movies - Trending',
+        'Series - Trending',
+        'Movies - Surging',
+        'Series - Surging',
+        'Movies - Brand New',
+        'Series - Brand New',
+        'Movies - Classics',
+        'Series - Classics',
+        'Series - Airing now',
       ]
     );
   } finally {
