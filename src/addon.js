@@ -69,18 +69,20 @@ function fullManifest(lang) {
     types: ['movie', 'series'],
     idPrefixes: ['tt'],
     catalogs: [
-      list('movie', 'wikimaze-trending', 'Movies - Trending'),
-      list('series', 'wikimaze-trending', 'Series - Trending'),
+      // Stremio adds the type to each name ("Trending movies"), so names
+      // carry no type. Movies first, then series.
       // Surging movies: Wikipedia readership climb, a PLACEHOLDER source
       // (see trending.js). Surging series: TVmaze, shows with a new
       // episode in the last two days by TVmaze's popularity weight.
-      list('movie', 'wikimaze-hot', 'Movies - Surging'),
-      list('series', 'wikimaze-hot', 'Series - Surging', 'tvmaze'),
-      list('movie', 'wikimaze-new', 'Movies - Brand New'),
-      list('series', 'wikimaze-new', 'Series - Brand New', 'tvmaze'),
-      list('movie', 'wikimaze-popular', 'Movies - Classics'),
-      list('series', 'wikimaze-classics', 'Series - Classics'),
-      list('series', 'wikimaze-airing', 'Series - Airing now', 'tvmaze'),
+      list('movie', 'wikimaze-trending', 'Trending'),
+      list('movie', 'wikimaze-hot', 'Surging'),
+      list('movie', 'wikimaze-new', 'Brand New'),
+      list('movie', 'wikimaze-popular', 'Classics'),
+      list('series', 'wikimaze-trending', 'Trending'),
+      list('series', 'wikimaze-hot', 'Surging', 'tvmaze'),
+      list('series', 'wikimaze-new', 'Brand New', 'tvmaze'),
+      list('series', 'wikimaze-classics', 'Classics'),
+      list('series', 'wikimaze-airing', 'Airing now', 'tvmaze'),
       // The whole title store ("wikimaze-library") is not a Stremio row;
       // apps reach it through /api/search (see server.js).
     ],

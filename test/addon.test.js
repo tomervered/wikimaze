@@ -153,17 +153,17 @@ test('genre filters: option text in either language, on every list', async () =>
     assert.ok(man.catalogs.every((c) => c.extra.some((e) => e.name === 'genre' && e.options.length > 5)));
     assert.ok(man.catalogs.every((c) => !c.extra.some((e) => e.isRequired)));
     assert.deepStrictEqual(
-      man.catalogs.map((c) => c.name),
+      man.catalogs.map((c) => `${c.type} ${c.name}`),
       [
-        'Movies - Trending',
-        'Series - Trending',
-        'Movies - Surging',
-        'Series - Surging',
-        'Movies - Brand New',
-        'Series - Brand New',
-        'Movies - Classics',
-        'Series - Classics',
-        'Series - Airing now',
+        'movie Trending',
+        'movie Surging',
+        'movie Brand New',
+        'movie Classics',
+        'series Trending',
+        'series Surging',
+        'series Brand New',
+        'series Classics',
+        'series Airing now',
       ]
     );
   } finally {
