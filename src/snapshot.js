@@ -1,9 +1,10 @@
-// Prebuilt lists, one JSON file per language:
-//   { built: ISO time, lists: { "movie/wikimaze-trending": [items...], ... } }
-// scripts/build-snapshot.js writes them and a GitHub Action publishes them
-// to the repository's `data` branch every few hours. The add-on reads the
-// file from GitHub's CDN and keeps it in memory for a few minutes, so a
-// catalog request costs one small download at most, never a Wikidata query.
+// Prebuilt lists and the title store, one JSON file per language:
+//   { built, titles: { tt..: entry }, lists: { "type/id[@region]": [tt..] } }
+// (see store.js). scripts/build-snapshot.js writes them and a GitHub Action
+// publishes them to the repository's `data` branch every few hours. The
+// add-on reads the file from GitHub's CDN and keeps it in memory for a few
+// minutes, so a catalog or search request costs one download at most, never
+// a Wikidata query.
 
 const { getJson } = require('./http');
 
@@ -16,19 +17,28 @@ const TTL = 10 * 60; // seconds
 async function load(lang) {
   if (process.env.SNAPSHOT_URL === 'off') return null;
   try {
-    const data = await getJson(`${BASE}/${lang}.json`, { ttl: TTL, timeout: 4000 });
+    const data = await getJson(`${BASE}/${lang}.json`, { ttl: TTL, timeout: 6000 });
     return data && data.lists ? data : null;
   } catch {
     return null;
   }
 }
 
-// One list from the snapshot, or null. Regional Trending lists are stored
-// under "type/id@region".
+// The store's titles for `lang`, or null.
+async function titles(lang) {
+  const snap = await load(lang);
+  return snap && snap.titles ? snap.titles : null;
+}
+
+// One list from the snapshot as store entries (preview shape plus g, year),
+// or null. Regional Trending lists are stored under "type/id@region".
+// Snapshots written before the store held whole items; both work.
 async function list(type, id, lang, region = null) {
   const snap = await load(lang);
   const items = snap && snap.lists[`${type}/${id}${region ? '@' + region : ''}`];
-  return Array.isArray(items) ? items : null;
+  if (!Array.isArray(items)) return null;
+  if (!snap.titles) return items;
+  return items.map((tid) => snap.titles[tid]).filter(Boolean);
 }
 
-module.exports = { load, list, BASE };
+module.exports = { load, list, titles, BASE };

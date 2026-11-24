@@ -9,6 +9,7 @@ const genres = require('./genres');
 const { REGIONS } = require('./trending');
 const lists = require('./lists');
 const snapshot = require('./snapshot');
+const store = require('./store');
 
 const PAGE = 100;
 
@@ -22,62 +23,74 @@ function genreExtra(type, lang, source) {
 }
 
 // Lists a viewer can switch on or off on the install page; the letters go in
-// the install link ("he.tc" = Trending and Classics, Hebrew).
-const LIST_FLAGS = { t: 'wikimaze-trending', v: 'wikimaze-hot', c: ['wikimaze-popular', 'wikimaze-classics'], a: 'wikimaze-airing' };
+// the install link ("he.tc" = Trending and Classics, Hebrew). No letters =
+// DEFAULT_FLAGS. Live search ("l") is off unless asked for: it queries
+// Wikidata and TVmaze on every search, where the other rows search the store.
+const LIST_FLAGS = {
+  t: 'wikimaze-trending',
+  v: 'wikimaze-hot',
+  n: 'wikimaze-new',
+  c: ['wikimaze-popular', 'wikimaze-classics'],
+  a: 'wikimaze-airing',
+  s: 'wikimaze-library',
+  l: 'wikimaze-live',
+};
+const DEFAULT_FLAGS = 'tvncas';
 
 function manifest(lang, lists = null, region = null) {
   let m = fullManifest(lang);
   if (region && REGIONS.includes(region)) {
     m = { ...m, id: `${m.id}-${region}`, name: `${m.name} ${region.toUpperCase()}` };
   }
-  if (!lists) return m;
-  const keep = new Set([...lists].flatMap((f) => [].concat(LIST_FLAGS[f] || [])));
+  const flags = lists || DEFAULT_FLAGS;
+  const keep = new Set([...flags].flatMap((f) => [].concat(LIST_FLAGS[f] || [])));
   const catalogs = m.catalogs.filter((c) => keep.has(c.id));
-  return { ...m, id: `${m.id}.${[...lists].sort().join('')}`, catalogs };
+  return lists ? { ...m, id: `${m.id}.${[...lists].sort().join('')}`, catalogs } : { ...m, catalogs };
 }
 
 function fullManifest(lang) {
   const suffix = lang === 'en' ? '' : ` (${lang})`;
+  // Every list can be searched (Stremio's search bar shows one row per
+  // list) and filtered by genre and year in Discover.
+  const extras = (type, source) => [
+    genreExtra(type, lang, source),
+    { name: 'year', options: store.yearOptions() },
+    { name: 'search' },
+    { name: 'skip' },
+  ];
+  const list = (type, id, name, source) => ({ type, id, name, extra: extras(type, source) });
   return {
     id: 'community.wikimaze' + (lang === 'en' ? '' : '.' + lang),
     version: pkg.version,
     name: 'WikiMaze' + suffix,
     description:
       'Movie and series details from Wikidata (CC0) and TVmaze (CC BY-SA), titles in your language. ' +
+      'Search ends with "!" to ask Wikidata and TVmaze directly. ' +
       'TV data from TVmaze.com, licensed CC BY-SA 4.0.',
     logo: undefined,
     resources: ['catalog', { name: 'meta', types: ['movie', 'series'], idPrefixes: ['tt'] }],
     types: ['movie', 'series'],
     idPrefixes: ['tt'],
-    // One browsable catalog per type. Search and genre are optional extras
-    // on it (like Cinemeta), so Discover always has a list to show and
-    // Stremio's search bar still reaches it.
     catalogs: [
-      { type: 'movie', id: 'wikimaze-trending', name: 'WikiMovies - Trending', extra: [genreExtra('movie', lang), { name: 'skip' }] },
-      { type: 'series', id: 'wikimaze-trending', name: 'WikiSeries - Trending', extra: [genreExtra('series', lang), { name: 'skip' }] },
+      list('movie', 'wikimaze-trending', 'WikiMovies - Trending'),
+      list('series', 'wikimaze-trending', 'WikiSeries - Trending'),
       // Surging movies: Wikipedia readership climb, a PLACEHOLDER source
       // (see trending.js). Surging series: TVmaze, shows with a new
       // episode in the last two days by TVmaze's popularity weight.
-      { type: 'movie', id: 'wikimaze-hot', name: 'WikiMovies - Surging', extra: [genreExtra('movie', lang), { name: 'skip' }] },
-      { type: 'series', id: 'wikimaze-hot', name: 'WikiSeries - Surging', extra: [genreExtra('series', lang, 'tvmaze'), { name: 'skip' }] },
-      {
-        type: 'movie',
-        id: 'wikimaze-popular',
-        name: 'WikiMovies - Classics',
-        extra: [{ name: 'search' }, genreExtra('movie', lang), { name: 'skip' }],
-      },
-      {
-        type: 'series',
-        id: 'wikimaze-classics',
-        name: 'WikiSeries - Classics',
-        extra: [{ name: 'search' }, genreExtra('series', lang), { name: 'skip' }],
-      },
-      {
-        type: 'series',
-        id: 'wikimaze-airing',
-        name: 'WikiSeries - Airing now',
-        extra: [genreExtra('series', lang, 'tvmaze'), { name: 'skip' }],
-      },
+      list('movie', 'wikimaze-hot', 'WikiMovies - Surging'),
+      list('series', 'wikimaze-hot', 'WikiSeries - Surging', 'tvmaze'),
+      list('movie', 'wikimaze-new', 'WikiMovies - Brand New'),
+      list('series', 'wikimaze-new', 'WikiSeries - Brand New', 'tvmaze'),
+      list('movie', 'wikimaze-popular', 'WikiMovies - Classics'),
+      list('series', 'wikimaze-classics', 'WikiSeries - Classics'),
+      list('series', 'wikimaze-airing', 'WikiSeries - Airing now', 'tvmaze'),
+      // Every title any list has shown, once each; search here falls back
+      // to Wikidata and TVmaze when nothing in the store matches.
+      list('movie', 'wikimaze-library', 'WikiMovies - All titles'),
+      list('series', 'wikimaze-library', 'WikiSeries - All titles'),
+      // Search only: always asks Wikidata and TVmaze.
+      { type: 'movie', id: 'wikimaze-live', name: 'WikiMovies - Live search', extra: [{ name: 'search', isRequired: true }] },
+      { type: 'series', id: 'wikimaze-live', name: 'WikiSeries - Live search', extra: [{ name: 'search', isRequired: true }] },
     ],
     behaviorHints: { configurable: true },
   };
@@ -133,24 +146,67 @@ function liveList(type, id, lang, region) {
   return promise;
 }
 
-async function catalog(type, id, extra, lang, region = null) {
-  const skip = Number(extra.skip) || 0;
-  const q = (extra.search || '').trim();
+// "breaking bad!" forces a live search; the "!" is dropped.
+function parseQuery(raw) {
+  const q = String(raw || '').trim();
+  const forced = /^!|!$/.test(q);
+  return { q: q.replace(/^!+|!+$/g, '').trim(), forced };
+}
 
-  // Any catalog id with a search term searches; 'wikimaze-search' is the id
-  // older installs of the manifest still use.
-  if (q) return type === 'movie' ? searchMovies(q, lang) : searchSeries(q, lang);
-  if (!lists.LISTS.includes(`${type}/${id}`)) return [];
+function genreSource(type, id) {
+  return id === 'wikimaze-airing' || (type === 'series' && (id === 'wikimaze-hot' || id === 'wikimaze-new'))
+    ? 'tvmaze'
+    : 'wikidata';
+}
 
-  const source = id === 'wikimaze-airing' || (type === 'series' && id === 'wikimaze-hot') ? 'tvmaze' : 'wikidata';
-  const genre = genres.lookup(type, extra.genre, lang, source);
-  if (extra.genre && !genre) return [];
+// Live search on Wikidata and TVmaze.
+function live(type, q, lang) {
+  return type === 'movie' ? searchMovies(q, lang) : searchSeries(q, lang);
+}
 
+// Rows for one catalog: a list (or the whole store) filtered by genre, year
+// and search text. Shared by Stremio catalogs and the JSON search API.
+//   returns { rows: store entries or previews, source: 'store' | 'live' }
+async function find(type, id, extra, lang, region = null) {
+  const { q, forced } = parseQuery(extra.search);
+  if (id === 'wikimaze-live' || id === 'wikimaze-search') {
+    return { rows: q ? await live(type, q, lang) : [], source: 'live' };
+  }
+  if (q && forced) return { rows: await live(type, q, lang), source: 'live' };
+
+  const genre = genres.lookup(type, extra.genre, lang, genreSource(type, id)) ||
+    (extra.genre && genres.byKey(extra.genre));
+  if (extra.genre && !genre) return { rows: [], source: 'store' };
+  const years = store.yearRange(extra.year);
+  const filters = {
+    type,
+    q,
+    genre: genre && genre.key,
+    from: extra.from ? Number(extra.from) : years && years[0],
+    to: extra.to ? Number(extra.to) : years && years[1],
+  };
+
+  if (id === 'wikimaze-library') {
+    const titles = await snapshot.titles(lang);
+    if (!titles) return { rows: q ? await live(type, q, lang) : [], source: 'live' };
+    const rows = store.query(titles, filters);
+    // Nothing stored matches: ask Wikidata and TVmaze.
+    if (q && !rows.length) return { rows: await live(type, q, lang), source: 'live' };
+    return { rows, source: 'store' };
+  }
+
+  if (!lists.LISTS.includes(`${type}/${id}`)) return { rows: [], source: 'store' };
   // A region changes only Trending; the other lists are the same everywhere.
   const r = id === 'wikimaze-trending' && REGIONS.includes(region) ? region : null;
   const all = (await snapshot.list(type, id, lang, r)) || (await liveList(type, id, lang, r)) || [];
-  const picked = genre ? all.filter((x) => (x.g || []).includes(genre.key)) : all;
-  return picked.slice(skip, skip + PAGE).map(({ g, ...preview }) => preview);
+  const byId = Object.fromEntries(all.map((x) => [x.id, { ...x, year: x.year || parseInt(x.releaseInfo, 10) || undefined }]));
+  return { rows: store.query(byId, { ...filters, ids: all.map((x) => x.id) }), source: 'store' };
+}
+
+async function catalog(type, id, extra, lang, region = null) {
+  const skip = Number(extra.skip) || 0;
+  const { rows } = await find(type, id, extra, lang, region);
+  return rows.slice(skip, skip + PAGE).map((x) => (x.poster !== undefined && x.g !== undefined ? store.preview(x) : x));
 }
 
 async function searchMovies(q, lang) {
@@ -289,6 +345,9 @@ async function meta(type, id, lang) {
 
 module.exports = {
   LIST_FLAGS,
+  DEFAULT_FLAGS,
+  find,
+  parseQuery,
   manifest,
   catalog,
   meta,

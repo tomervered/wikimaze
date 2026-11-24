@@ -18,7 +18,7 @@ const GENRES = [
   { key: 'children', en: 'Children', he: 'ילדים', maze: 'Children', ids: [], series: true },
   {
     key: 'comedy', en: 'Comedy', he: 'קומדיה', maze: 'Comedy',
-    ids: ['Q157443', 'Q860626', 'Q9335576', 'Q21010853', 'Q170238', 'Q53094', 'Q20652466', 'Q4765080'],
+    ids: ['Q157443', 'Q860626', 'Q9335576', 'Q170238', 'Q53094', 'Q4765080'],
   },
   { key: 'crime', en: 'Crime', he: 'פשע', maze: 'Crime', ids: ['Q959790', 'Q9335577', 'Q19367312', 'Q113485322'] },
   { key: 'documentary', en: 'Documentary', he: 'תיעודי', maze: 'Documentary', ids: ['Q93204'] },
@@ -91,4 +91,14 @@ function keysFor({ ids = [], maze = [] } = {}) {
   return [...out];
 }
 
-module.exports = { options, lookup, keysFor };
+// A genre by its key ("comedy"), for the search API.
+function byKey(key) {
+  return GENRES.find((g) => g.key === key) || null;
+}
+
+// Every genre with its label in `lang`, for the search API.
+function all(lang) {
+  return GENRES.map((g) => ({ key: g.key, label: label(g, lang), movie: !g.series, series: !g.movie }));
+}
+
+module.exports = { options, lookup, keysFor, byKey, all };

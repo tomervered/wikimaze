@@ -372,7 +372,55 @@ async function itemsForWikiTitles(titles, wiki, lang) {
   return out;
 }
 
+// Brand New films: English Wikipedia's "<year> films" category (this year,
+// and last year in January), then the members' release dates, IMDb ids and
+// sitelinks in batches. A date-range query over all films times out; the
+// category is small (2,000-3,000 a year) and current. Films released in the
+// last `days` days, best known first (sitelinks).
+async function newFilms(lang, days = 30) {
+  const now = new Date();
+  const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const to = now.toISOString().slice(0, 10);
+  const years = [...new Set([from.slice(0, 4), to.slice(0, 4)])];
+  const members = [];
+  for (const y of years) {
+    const rows = await sparql(
+      `SELECT ?item WHERE { SERVICE wikibase:mwapi {
+        bd:serviceParam wikibase:endpoint "en.wikipedia.org"; wikibase:api "Generator";
+                        mwapi:generator "categorymembers"; mwapi:gcmtitle "Category:${y} films";
+                        mwapi:gcmlimit "max"; mwapi:gcmnamespace "0" .
+        ?item wikibase:apiOutputItem mwapi:item. } }`,
+      12 * 3600,
+      60000
+    );
+    for (const r of rows) if (r.item) members.push(qid(r.item.value));
+  }
+  const out = [];
+  const ids = [...new Set(members)];
+  for (let i = 0; i < ids.length; i += 300) {
+    const rows = await sparql(
+      `SELECT ?item ?imdb ?label ?date ?links ?genre WHERE {
+        VALUES ?item { ${ids.slice(i, i + 300).map((x) => 'wd:' + x).join(' ')} }
+        ?item wdt:P345 ?imdb; wdt:P577 ?date; wikibase:sitelinks ?links. FILTER(STRSTARTS(?imdb, "tt"))
+        FILTER(?date >= "${from}T00:00:00Z"^^xsd:dateTime && ?date <= "${to}T23:59:59Z"^^xsd:dateTime)
+        OPTIONAL { ?item wdt:P136|wdt:P31 ?genre. }
+        ${labelClause(lang)}
+      }`,
+      12 * 3600,
+      60000
+    );
+    const links = new Map(rows.map((r) => [r.imdb.value, Number(r.links.value)]));
+    const genresOf = genreIdsByImdb(rows);
+    for (const x of dedupeRows(rows)) out.push({ ...x, genres: genresOf.get(x.imdb) || [], links: links.get(x.imdb) });
+  }
+  // firstDate is exact (year-only dates read as Jan 1 and are dropped).
+  return out
+    .filter((x) => x.firstDate && x.firstDate >= from && x.firstDate <= to)
+    .sort((a, b) => b.links - a.links);
+}
+
 module.exports = {
+  newFilms,
   releasedBy,
   search,
   classics,

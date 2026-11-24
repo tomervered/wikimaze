@@ -22,6 +22,8 @@ const MAX_ITEMS = 2000;
 // Classics are cut from the best-known titles of all time; a genre filter
 // then keeps the ones of that genre among them.
 const CLASSICS_POOL = 3000;
+// Brand New: out (film release, series premiere) within this many days.
+const NEW_DAYS = 30;
 
 // The catalogs built here, by "type/id". Order matters only for the build
 // script: series Trending and movie Surging reuse the movie Trending
@@ -34,6 +36,8 @@ const LISTS = [
   'series/wikimaze-hot',
   'series/wikimaze-trending',
   'movie/wikimaze-hot',
+  'movie/wikimaze-new',
+  'series/wikimaze-new',
 ];
 
 const metahub = (kind, imdb, size = 'medium') => `https://images.metahub.space/${kind}/${size}/${imdb}/img`;
@@ -53,6 +57,7 @@ function fromWikidata(type, r) {
     name: r.name,
     poster: metahub('poster', r.imdb),
     releaseInfo: type === 'series' ? years(r.year, r.endYear, !r.endYear) : r.year,
+    date: r.firstDate,
     g: genres.keysFor({ ids: r.genres || [] }),
   };
 }
@@ -69,7 +74,9 @@ function fromTvmaze(show, localName) {
       show.ended && show.ended.slice(0, 4),
       show.status === 'Running' || show.status === 'In Development'
     ),
-    genres: show.genres,
+    date: show.premiered,
+    en: show.name,
+    mz: show.genres || [],
     g: genres.keysFor({ maze: show.genres || [] }),
   };
 }
@@ -100,7 +107,12 @@ function zipper(shows) {
 }
 
 async function tvmazeList(id, lang) {
-  const recent = id === 'wikimaze-hot' ? tvmaze.airingNow(['US', 'GB', 'IL'], 2) : tvmaze.airingNow();
+  const recent =
+    id === 'wikimaze-new'
+      ? tvmaze.premieres(['US', 'GB', 'IL'], NEW_DAYS)
+      : id === 'wikimaze-hot'
+        ? tvmaze.airingNow(['US', 'GB', 'IL'], 2)
+        : tvmaze.airingNow();
   let shows = (await recent).filter((s) => s.externals && s.externals.imdb);
   if (id === 'wikimaze-hot') shows = zipper(shows);
   shows = shows.slice(0, MAX_ITEMS);
@@ -122,6 +134,10 @@ async function build(type, id, lang, region = null) {
   }
   if (id === 'wikimaze-trending' || (type === 'movie' && id === 'wikimaze-hot')) {
     const rows = await trending(type, lang, id === 'wikimaze-hot' ? 'spike' : 'trending');
+    return rows.slice(0, MAX_ITEMS).map((r) => fromWikidata(type, r));
+  }
+  if (type === 'movie' && id === 'wikimaze-new') {
+    const rows = await wikidata.newFilms(lang, NEW_DAYS);
     return rows.slice(0, MAX_ITEMS).map((r) => fromWikidata(type, r));
   }
   if (id === 'wikimaze-popular' || id === 'wikimaze-classics') {

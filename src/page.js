@@ -72,8 +72,11 @@ function configurePage(origin, lang, region = '') {
     <legend style="font-weight:600;margin-bottom:6px">Lists to show</legend>
     <label style="font-weight:400"><input type="checkbox" id="l-t" value="t" checked style="width:auto"> Trending</label>
     <label style="font-weight:400"><input type="checkbox" id="l-v" value="v" checked style="width:auto"> Surging</label>
+    <label style="font-weight:400"><input type="checkbox" id="l-n" value="n" checked style="width:auto"> Brand New (out in the last 30 days)</label>
     <label style="font-weight:400"><input type="checkbox" id="l-c" value="c" checked style="width:auto"> Classics</label>
     <label style="font-weight:400"><input type="checkbox" id="l-a" value="a" checked style="width:auto"> Airing now (series)</label>
+    <label style="font-weight:400"><input type="checkbox" id="l-s" value="s" checked style="width:auto"> All titles (search everything WikiMaze has listed, filter by genre and year)</label>
+    <label style="font-weight:400"><input type="checkbox" id="l-l" value="l" style="width:auto"> Live search row (asks Wikidata and TVmaze on every search; slower)</label>
   </fieldset>
   <label for="url" style="margin-top:16px">Manifest link</label>
   <input id="url" readonly>
@@ -81,6 +84,7 @@ function configurePage(origin, lang, region = '') {
     <a class="btn" id="install" href="#">Install in Stremio</a>
     <button class="secondary" id="copy" type="button">Copy link</button>
   </div>
+  <small>Search tip: end a search with "!" (for example "dune!") to skip WikiMaze's saved titles and ask Wikidata and TVmaze directly.</small>
   <small>Data: <a href="https://www.wikidata.org/">Wikidata</a> (CC0) and
   <a href="https://www.tvmaze.com/">TVmaze</a> (CC BY-SA 4.0). Artwork is linked from TVmaze and metahub, not stored here.</small>
   <small><strong>Privacy.</strong> WikiMaze has no accounts, cookies, analytics or tracking, and it stores nothing about you. Lists are built from public, anonymous totals (Wikipedia page views, Wikidata, TVmaze). The host, Vercel, keeps short-lived request logs (including IP addresses) to run and secure the service; see <a href="https://vercel.com/legal/privacy-policy">Vercel's privacy policy</a>. Your choices on this page stay in the link you install.</small>
@@ -91,8 +95,8 @@ function configurePage(origin, lang, region = '') {
   function update() {
     const l = sel.value;
     const picked = [...document.querySelectorAll('#lists input:checked')].map((c) => c.value).join('');
-    // All four (the default) needs no suffix; none picked falls back to all.
-    let prefix = picked && picked.length < 4 ? l + '.' + picked : (l === 'en' ? '' : l);
+    // The default set needs no suffix; none picked falls back to it.
+    let prefix = picked && picked !== 'tvncas' ? l + '.' + picked : (l === 'en' ? '' : l);
     if (reg.value) prefix = (prefix || l) + '-' + reg.value;
     const link = origin + (prefix ? '/' + prefix : '') + '/manifest.json';
     url.value = link;

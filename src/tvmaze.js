@@ -63,6 +63,32 @@ async function airingNow(countries = ['US', 'GB'], days = 7) {
   return [...shows.values()].sort((a, b) => (b.weight || 0) - (a.weight || 0));
 }
 
+// Brand New series: shows whose first episode (season 1, episode 1, or the
+// show's premiere date) falls in the last `days` days, on TV in the given
+// countries or on streaming, by TVmaze's popularity weight.
+async function premieres(countries = ['US', 'GB', 'IL'], days = 30) {
+  const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const urls = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    urls.push(`${API}/schedule/web?date=${d}`);
+    for (const c of countries) urls.push(`${API}/schedule?country=${c}&date=${d}`);
+  }
+  const lists = await Promise.all(urls.map((u) => getJson(u, { ttl: 12 * 3600 }).catch(() => [])));
+  const shows = new Map();
+  for (const list of lists) {
+    for (const ep of list || []) {
+      const show = ep.show || (ep._embedded && ep._embedded.show);
+      if (!show || shows.has(show.id)) continue;
+      const first = ep.season === 1 && ep.number === 1;
+      if (first || (show.premiered && show.premiered >= from)) shows.set(show.id, show);
+    }
+  }
+  return [...shows.values()]
+    .filter((s) => s.premiered && s.premiered >= from)
+    .sort((a, b) => (b.weight || 0) - (a.weight || 0));
+}
+
 function bestBackground(show) {
   const imgs = (show._embedded && show._embedded.images) || [];
   const bg = imgs.find((i) => i.type === 'background' && i.main) || imgs.find((i) => i.type === 'background');
@@ -75,4 +101,4 @@ function bestLogo(show) {
   return logo && logo.resolutions && logo.resolutions.original && logo.resolutions.original.url;
 }
 
-module.exports = { showByImdb, showFull, search, airingNow, stripHtml, image, bestBackground, bestLogo };
+module.exports = { showByImdb, showFull, search, airingNow, premieres, stripHtml, image, bestBackground, bestLogo };

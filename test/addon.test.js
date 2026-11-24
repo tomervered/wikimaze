@@ -159,9 +159,13 @@ test('genre filters: option text in either language, on every list', async () =>
         'WikiSeries - Trending',
         'WikiMovies - Surging',
         'WikiSeries - Surging',
+        'WikiMovies - Brand New',
+        'WikiSeries - Brand New',
         'WikiMovies - Classics',
         'WikiSeries - Classics',
         'WikiSeries - Airing now',
+        'WikiMovies - All titles',
+        'WikiSeries - All titles',
       ]
     );
   } finally {
@@ -228,8 +232,8 @@ test('responses allow serving stale while refreshing; empty lists are kept brief
   const port = server.address().port;
   const head = (p) => new Promise((resolve) => http.get({ port, path: p }, (res) => { res.resume(); resolve(res.headers['cache-control']); }));
   try {
-    assert.match(await head('/catalog/movie/wikimaze-popular/search=x.json'), /stale-while-revalidate=86400/);
-    assert.strictEqual(await head('/catalog/movie/wikimaze-popular/search=none.json'), 'public, max-age=60, s-maxage=60');
+    assert.match(await head('/catalog/movie/wikimaze-live/search=x.json'), /stale-while-revalidate=86400/);
+    assert.strictEqual(await head('/catalog/movie/wikimaze-live/search=none.json'), 'public, max-age=60, s-maxage=60');
   } finally {
     undo.forEach((u) => u());
     server.close();
@@ -285,7 +289,8 @@ test('install link picks lists: "he.tc" keeps Trending and Classics only', () =>
     ['wikimaze-classics', 'wikimaze-popular', 'wikimaze-trending']
   );
   assert.notStrictEqual(m.id, addon.manifest('he').id);
-  assert.strictEqual(addon.manifest('he').catalogs.length, 7);
+  assert.strictEqual(addon.manifest('he').catalogs.length, 11);
+  assert.ok(addon.manifest('he', 'tl').catalogs.some((c) => c.id === 'wikimaze-live'));
 });
 
 test('regions: link prefix parses, manifest is named, unknown regions are ignored', async () => {
@@ -297,4 +302,43 @@ test('regions: link prefix parses, manifest is named, unknown regions are ignore
   const { REGIONS, REGION_WEIGHT } = require('../src/trending');
   assert.deepStrictEqual(REGIONS, ['us', 'gb', 'de', 'fr', 'es', 'it', 'pl', 'il', 'eg', 'jp', 'br']);
   assert.ok(REGION_WEIGHT > 0.5 && REGION_WEIGHT < 1);
+});
+
+test('store: one entry per title, history keeps lists long, search and filters', () => {
+  const store = require('../src/store');
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  const item = (id, name, year, g = [], type = 'movie') => ({ id, type, name, poster: 'p', releaseInfo: String(year), g });
+  const first = store.merge(null, {
+    'movie/wikimaze-trending': [item('tt1', 'The Odyssey', 2026, ['adventure']), item('tt2', 'Old News', 2010)],
+    'movie/wikimaze-new': [item('tt1', 'The Odyssey', 2026, ['adventure'])],
+  }, day(10));
+  assert.strictEqual(Object.keys(first.titles).length, 2); // The Odyssey once
+  assert.deepStrictEqual(Object.keys(first.titles.tt1.seen).sort(), ['movie/wikimaze-new', 'movie/wikimaze-trending']);
+
+  const second = store.merge(first, { 'movie/wikimaze-trending': [item('tt3', 'Amélie', 2001, ['romance'])] }, day(0));
+  // Today's ranking first, then recent history; nothing is dropped.
+  assert.deepStrictEqual(second.lists['movie/wikimaze-trending'], ['tt3', 'tt1', 'tt2']);
+  assert.strictEqual(Object.keys(second.titles).length, 3);
+
+  const q = (o) => store.query(second.titles, o).map((e) => e.id);
+  assert.deepStrictEqual(q({ q: 'amelie' }), ['tt3']); // accents ignored
+  assert.deepStrictEqual(q({ q: 'odyss' }), ['tt1']);
+  assert.deepStrictEqual(q({ genre: 'adventure' }), ['tt1']);
+  assert.deepStrictEqual(q({ from: 2000, to: 2009 }), ['tt3']);
+  assert.deepStrictEqual(store.yearRange('2010s'), [2010, 2019]);
+  assert.deepStrictEqual(store.yearRange('Older'), [0, 1969]);
+});
+
+test('series genres: TVmaze wins over Wikidata tone tags (Breaking Bad is not a comedy)', () => {
+  const store = require('../src/store');
+  const genres = require('../src/genres');
+  const wd = genres.keysFor({ ids: ['Q1366112', 'Q9335577', 'Q20652466', 'Q21010853'] });
+  assert.ok(!wd.includes('comedy'));
+  const e = store.entryOf({ id: 'tt0903747', type: 'series', name: 'Breaking Bad', g: ['comedy', 'drama'] }, { mz: ['Drama', 'Crime', 'Thriller'] });
+  assert.deepStrictEqual(e.g.sort(), ['crime', 'drama', 'thriller']);
+});
+
+test('search: "!" forces a live query; category search stays inside the list', async () => {
+  assert.deepStrictEqual(addon.parseQuery('breaking bad!'), { q: 'breaking bad', forced: true });
+  assert.deepStrictEqual(addon.parseQuery('odyssey'), { q: 'odyssey', forced: false });
 });

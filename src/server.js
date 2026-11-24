@@ -8,6 +8,8 @@
 const http = require('node:http');
 const addon = require('./addon');
 const { configurePage } = require('./page');
+const genres = require('./genres');
+const store = require('./store');
 
 // First path segment: the language, optionally with the chosen lists after a
 // dot, e.g. "he" or "he.tc" (see addon.LIST_FLAGS).
@@ -83,6 +85,7 @@ async function route(req, res) {
   if (parts.length === 1 && parts[0] === 'manifest.json') {
     return send(res, 200, addon.manifest(lang, lists, region), { maxAge: 3600 });
   }
+  if (parts[0] === 'api') return api(res, parts[1], url.searchParams, lang, region);
   if (parts.length === 1 && parts[0] === 'health') {
     return send(res, 200, { ok: true });
   }
@@ -111,6 +114,49 @@ async function route(req, res) {
   return send(res, 404, { err: 'not found', url: req.url });
 }
 
+// JSON search API for apps (Corporal Jackie): the same store and filters
+// as the Stremio catalogs, with richer results and filter counts.
+//   /api/search?type=movie|series&q=&genre=<key>&year=2010s&from=&to=
+//              &list=<catalog id>&live=1&skip=0&limit=50&lang=he&region=il
+//   /api/genres?lang=he     /api/lists
+// Nothing about the caller is kept (see README, Privacy).
+async function api(res, name, params, pathLang, pathRegion) {
+  const lang = params.get('lang') || pathLang;
+  const region = params.get('region') || pathRegion;
+  if (name === 'genres') return send(res, 200, { genres: genres.all(lang) }, { maxAge: DAY });
+  if (name === 'lists') {
+    const m = addon.manifest(lang, 'tvncasl');
+    return send(res, 200, { lists: m.catalogs.map(({ type, id, name: n }) => ({ type, id, name: n })) }, { maxAge: 3600 });
+  }
+  if (name !== 'search') return send(res, 404, { err: 'not found' });
+  const type = params.get('type') === 'series' ? 'series' : 'movie';
+  const q = params.get('q') || '';
+  const extra = {
+    search: params.get('live') === '1' && q ? `${q}!` : q,
+    genre: params.get('genre') || undefined,
+    year: params.get('year') || undefined,
+    from: params.get('from') || undefined,
+    to: params.get('to') || undefined,
+  };
+  const skip = Math.max(0, Number(params.get('skip')) || 0);
+  const limit = Math.min(200, Math.max(1, Number(params.get('limit')) || 50));
+  const { rows, source } = await addon.find(type, params.get('list') || 'wikimaze-library', extra, lang, region);
+  const results = rows.slice(skip, skip + limit).map((x) => ({
+    id: x.id,
+    type: x.type || type,
+    name: x.name,
+    en: x.en,
+    year: x.year || parseInt(x.releaseInfo, 10) || undefined,
+    releaseInfo: x.releaseInfo,
+    date: x.date,
+    poster: x.poster,
+    genres: x.g,
+    lists: x.seen ? Object.keys(x.seen) : undefined,
+  }));
+  return send(res, 200, { source, total: rows.length, skip, results, facets: source === 'store' ? store.facets(rows) : undefined },
+    q ? { maxAge: 3600, stale: DAY } : { maxAge: 6 * 3600, stale: DAY });
+}
+
 // Requests the home rows through the public URL, so Vercel's CDN holds a
 // copy and Stremio never waits for a cold build (Trending takes 20-30 s).
 // Run daily by the cron in vercel.json; harmless to call by hand.
@@ -122,6 +168,8 @@ const WARM_FIRST = [
   'series/wikimaze-classics',
   'series/wikimaze-airing',
   'series/wikimaze-hot',
+  'movie/wikimaze-new',
+  'series/wikimaze-new',
 ];
 // Built from the same Wikipedia data as movie trending, so they go second.
 const WARM_AFTER = ['series/wikimaze-trending', 'movie/wikimaze-hot'];
