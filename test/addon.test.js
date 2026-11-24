@@ -288,7 +288,7 @@ test('install link picks lists: "he.tc" keeps Trending and Classics only', () =>
   );
   assert.notStrictEqual(m.id, addon.manifest('he').id);
   assert.strictEqual(addon.manifest('he').catalogs.length, 9);
-  assert.ok(addon.manifest('he', 'tl').catalogs.some((c) => c.id === 'wikimaze-live'));
+  assert.ok(!addon.manifest('he', 'tl').catalogs.some((c) => c.id === 'wikimaze-live'));
 });
 
 test('regions: link prefix parses, manifest is named, unknown regions are ignored', async () => {

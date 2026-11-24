@@ -75,7 +75,6 @@ function configurePage(origin, lang, region = '') {
     <label style="font-weight:400"><input type="checkbox" id="l-n" value="n" checked style="width:auto"> Brand New (out in the last 30 days)</label>
     <label style="font-weight:400"><input type="checkbox" id="l-c" value="c" checked style="width:auto"> Classics</label>
     <label style="font-weight:400"><input type="checkbox" id="l-a" value="a" checked style="width:auto"> Airing now (series)</label>
-    <label style="font-weight:400"><input type="checkbox" id="l-l" value="l" style="width:auto"> Live search row (asks Wikidata and TVmaze on every search; slower)</label>
   </fieldset>
   <label for="url" style="margin-top:16px">Manifest link</label>
   <input id="url" readonly>

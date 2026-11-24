@@ -24,15 +24,13 @@ function genreExtra(type, lang, source) {
 
 // Lists a viewer can switch on or off on the install page; the letters go in
 // the install link ("he.tc" = Trending and Classics, Hebrew). No letters =
-// DEFAULT_FLAGS. Live search ("l") is off unless asked for: it queries
-// Wikidata and TVmaze on every search, where the other rows search the store.
+// DEFAULT_FLAGS.
 const LIST_FLAGS = {
   t: 'wikimaze-trending',
   v: 'wikimaze-hot',
   n: 'wikimaze-new',
   c: ['wikimaze-popular', 'wikimaze-classics'],
   a: 'wikimaze-airing',
-  l: 'wikimaze-live',
 };
 const DEFAULT_FLAGS = 'tvnca';
 
@@ -85,9 +83,6 @@ function fullManifest(lang) {
       list('series', 'wikimaze-airing', 'WikiSeries - Airing now', 'tvmaze'),
       // The whole title store ("wikimaze-library") is not a Stremio row;
       // apps reach it through /api/search (see server.js).
-      // Search only: always asks Wikidata and TVmaze.
-      { type: 'movie', id: 'wikimaze-live', name: 'WikiMovies - Live search', extra: [{ name: 'search', isRequired: true }] },
-      { type: 'series', id: 'wikimaze-live', name: 'WikiSeries - Live search', extra: [{ name: 'search', isRequired: true }] },
     ],
     behaviorHints: { configurable: true },
   };
@@ -182,6 +177,7 @@ function live(type, q, lang) {
 //   returns { rows: store entries or previews, source: 'store' | 'live' }
 async function find(type, id, extra, lang, region = null) {
   const { q, forced } = parseQuery(extra.search);
+  // 'wikimaze-live' / 'wikimaze-search': ids older installs may still ask for.
   if (id === 'wikimaze-live' || id === 'wikimaze-search') {
     return { rows: q ? await live(type, q, lang) : [], source: 'live' };
   }
