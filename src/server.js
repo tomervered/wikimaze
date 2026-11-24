@@ -125,7 +125,7 @@ async function api(res, name, params, pathLang, pathRegion) {
   const region = params.get('region') || pathRegion;
   if (name === 'genres') return send(res, 200, { genres: genres.all(lang) }, { maxAge: DAY });
   if (name === 'lists') {
-    const m = addon.manifest(lang, 'tvncasl');
+    const m = addon.manifest(lang, 'tvncal');
     return send(res, 200, { lists: m.catalogs.map(({ type, id, name: n }) => ({ type, id, name: n })) }, { maxAge: 3600 });
   }
   if (name !== 'search') return send(res, 404, { err: 'not found' });

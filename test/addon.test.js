@@ -164,8 +164,6 @@ test('genre filters: option text in either language, on every list', async () =>
         'WikiMovies - Classics',
         'WikiSeries - Classics',
         'WikiSeries - Airing now',
-        'WikiMovies - All titles',
-        'WikiSeries - All titles',
       ]
     );
   } finally {
@@ -289,7 +287,7 @@ test('install link picks lists: "he.tc" keeps Trending and Classics only', () =>
     ['wikimaze-classics', 'wikimaze-popular', 'wikimaze-trending']
   );
   assert.notStrictEqual(m.id, addon.manifest('he').id);
-  assert.strictEqual(addon.manifest('he').catalogs.length, 11);
+  assert.strictEqual(addon.manifest('he').catalogs.length, 9);
   assert.ok(addon.manifest('he', 'tl').catalogs.some((c) => c.id === 'wikimaze-live'));
 });
 

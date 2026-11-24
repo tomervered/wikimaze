@@ -32,10 +32,9 @@ const LIST_FLAGS = {
   n: 'wikimaze-new',
   c: ['wikimaze-popular', 'wikimaze-classics'],
   a: 'wikimaze-airing',
-  s: 'wikimaze-library',
   l: 'wikimaze-live',
 };
-const DEFAULT_FLAGS = 'tvncas';
+const DEFAULT_FLAGS = 'tvnca';
 
 function manifest(lang, lists = null, region = null) {
   let m = fullManifest(lang);
@@ -84,10 +83,8 @@ function fullManifest(lang) {
       list('movie', 'wikimaze-popular', 'WikiMovies - Classics'),
       list('series', 'wikimaze-classics', 'WikiSeries - Classics'),
       list('series', 'wikimaze-airing', 'WikiSeries - Airing now', 'tvmaze'),
-      // Every title any list has shown, once each; search here falls back
-      // to Wikidata and TVmaze when nothing in the store matches.
-      list('movie', 'wikimaze-library', 'WikiMovies - All titles'),
-      list('series', 'wikimaze-library', 'WikiSeries - All titles'),
+      // The whole title store ("wikimaze-library") is not a Stremio row;
+      // apps reach it through /api/search (see server.js).
       // Search only: always asks Wikidata and TVmaze.
       { type: 'movie', id: 'wikimaze-live', name: 'WikiMovies - Live search', extra: [{ name: 'search', isRequired: true }] },
       { type: 'series', id: 'wikimaze-live', name: 'WikiSeries - Live search', extra: [{ name: 'search', isRequired: true }] },
@@ -150,8 +147,6 @@ function liveList(type, id, lang, region) {
 const LIVE_BELOW = 20;
 // All titles asks live unless the store alone has a full page of matches.
 const ALL_TITLES_LIVE_BELOW = 100;
-
-const CLASSICS = ['wikimaze-popular', 'wikimaze-classics'];
 
 // Few stored matches: add Wikidata and TVmaze results after them, so a
 // search never finds less than it did before the store existed. Live
@@ -220,9 +215,9 @@ async function find(type, id, extra, lang, region = null) {
   const all = (await snapshot.list(type, id, lang, r)) || (await liveList(type, id, lang, r)) || [];
   const byId = Object.fromEntries(all.map((x) => [x.id, { ...x, year: x.year || parseInt(x.releaseInfo, 10) || undefined }]));
   const rows = store.query(byId, { ...filters, ids: all.map((x) => x.id) });
-  // Classics stand for "all time": like before the store, a search there
-  // also reaches Wikidata and TVmaze when the list itself has few matches.
-  if (q && CLASSICS.includes(id)) return withLive(rows, type, q, lang, filters);
+  // A search in any list shows the list's own matches first, then Wikidata
+  // and TVmaze matches when the list has fewer than LIVE_BELOW.
+  if (q) return withLive(rows, type, q, lang, filters);
   return { rows, source: 'store' };
 }
 

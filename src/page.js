@@ -75,7 +75,6 @@ function configurePage(origin, lang, region = '') {
     <label style="font-weight:400"><input type="checkbox" id="l-n" value="n" checked style="width:auto"> Brand New (out in the last 30 days)</label>
     <label style="font-weight:400"><input type="checkbox" id="l-c" value="c" checked style="width:auto"> Classics</label>
     <label style="font-weight:400"><input type="checkbox" id="l-a" value="a" checked style="width:auto"> Airing now (series)</label>
-    <label style="font-weight:400"><input type="checkbox" id="l-s" value="s" checked style="width:auto"> All titles (search everything WikiMaze has listed, filter by genre and year)</label>
     <label style="font-weight:400"><input type="checkbox" id="l-l" value="l" style="width:auto"> Live search row (asks Wikidata and TVmaze on every search; slower)</label>
   </fieldset>
   <label for="url" style="margin-top:16px">Manifest link</label>
@@ -96,7 +95,7 @@ function configurePage(origin, lang, region = '') {
     const l = sel.value;
     const picked = [...document.querySelectorAll('#lists input:checked')].map((c) => c.value).join('');
     // The default set needs no suffix; none picked falls back to it.
-    let prefix = picked && picked !== 'tvncas' ? l + '.' + picked : (l === 'en' ? '' : l);
+    let prefix = picked && picked !== 'tvnca' ? l + '.' + picked : (l === 'en' ? '' : l);
     if (reg.value) prefix = (prefix || l) + '-' + reg.value;
     const link = origin + (prefix ? '/' + prefix : '') + '/manifest.json';
     url.value = link;
