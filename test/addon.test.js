@@ -342,3 +342,18 @@ test('search: "!" forces a live query; category search stays inside the list', a
   assert.deepStrictEqual(addon.parseQuery('breaking bad!'), { q: 'breaking bad', forced: true });
   assert.deepStrictEqual(addon.parseQuery('odyssey'), { q: 'odyssey', forced: false });
 });
+
+test('api: /api/genres and /he/api/genres answer JSON', async () => {
+  const server = createServer().listen(0);
+  const port = server.address().port;
+  const get = (p) => new Promise((resolve) => http.get({ port, path: p }, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve([res.statusCode, d])); }));
+  try {
+    const [s1, b1] = await get('/api/genres');
+    assert.strictEqual(s1, 200);
+    assert.ok(JSON.parse(b1).genres.some((g) => g.key === 'comedy' && g.label === 'Comedy'));
+    const [, b2] = await get('/he/api/genres');
+    assert.ok(JSON.parse(b2).genres.some((g) => g.label === 'קומדיה'));
+  } finally {
+    server.close();
+  }
+});

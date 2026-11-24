@@ -69,7 +69,7 @@ async function route(req, res) {
   let lang = 'en';
   let lists = null;
   let region = null;
-  const prefix = parts.length && parts[0].match(LANG);
+  const prefix = parts.length && parts[0] !== 'api' && parts[0].match(LANG);
   if (prefix) {
     lang = prefix[1];
     lists = prefix[2] || null;
