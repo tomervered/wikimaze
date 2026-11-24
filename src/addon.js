@@ -148,14 +148,16 @@ function liveList(type, id, lang, region) {
 
 // Fewer stored matches than this and All titles adds live results.
 const LIVE_BELOW = 20;
+// All titles asks live unless the store alone has a full page of matches.
+const ALL_TITLES_LIVE_BELOW = 100;
 
 const CLASSICS = ['wikimaze-popular', 'wikimaze-classics'];
 
 // Few stored matches: add Wikidata and TVmaze results after them, so a
 // search never finds less than it did before the store existed. Live
 // results carry no genre or year, so a filtered search stays in the store.
-async function withLive(rows, type, q, lang, filters) {
-  if (rows.length >= LIVE_BELOW || filters.genre || filters.from || filters.to) return { rows, source: 'store' };
+async function withLive(rows, type, q, lang, filters, below = LIVE_BELOW) {
+  if (rows.length >= below || filters.genre || filters.from || filters.to) return { rows, source: 'store' };
   const extra = await live(type, q, lang).catch(() => []);
   const have = new Set(rows.map((x) => x.id));
   const more = extra.filter((x) => x.id && !have.has(x.id));
@@ -206,7 +208,10 @@ async function find(type, id, extra, lang, region = null) {
     const titles = await snapshot.titles(lang);
     if (!titles) return { rows: q ? await live(type, q, lang) : [], source: 'live' };
     const rows = store.query(titles, filters);
-    return q ? withLive(rows, type, q, lang, filters) : { rows, source: 'store' };
+    // All titles is the search engine: saved matches first, then every
+    // Wikidata/TVmaze match not saved yet (unless genre/year filters are
+    // on, which live results can't honour).
+    return q ? withLive(rows, type, q, lang, filters, ALL_TITLES_LIVE_BELOW) : { rows, source: 'store' };
   }
 
   if (!lists.LISTS.includes(`${type}/${id}`)) return { rows: [], source: 'store' };
