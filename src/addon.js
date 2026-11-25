@@ -224,6 +224,8 @@ async function findAll(type, id, extra, lang, region = null) {
 
 // Live years for one catalog request: as many as fit in this time (a
 // year asked before is cached and costs nothing), at most LIVE_YEARS_MAX.
+// A page is never left empty while years remain: Stremio stops scrolling
+// at an empty page.
 const LIVE_BUDGET_MS = 8000;
 const LIVE_YEARS_MAX = 15;
 
@@ -246,7 +248,7 @@ async function withPool(rows, type, filters, lang, skip, india) {
   const until = Date.now() + LIVE_BUDGET_MS;
   let asked = 0;
   let source = 'store';
-  for (let year = Math.min(deepest - 1, filters.to || Infinity); year >= floor && shown() < need && asked < LIVE_YEARS_MAX && Date.now() < until; year--) {
+  for (let year = Math.min(deepest - 1, filters.to || Infinity); year >= floor && shown() < need && asked < LIVE_YEARS_MAX && (Date.now() < until || shown() <= skip); year--) {
     const got = await pools.movieYear(genre, year, lang, lists.fromWikidata, 500).catch(() => null);
     if (!got) break;
     asked++;
