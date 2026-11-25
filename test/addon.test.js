@@ -419,7 +419,8 @@ test('genre filter: list titles, then the genre pool, then older years live', as
     const { rows } = await addon.find('movie', 'wikimaze-trending', { genre: 'Western' }, 'en');
     assert.deepStrictEqual(rows.slice(0, 2).map((x) => x.id), ['tt1', 'tt3']);
     assert.ok(!rows.some((x) => x.id === 'tt4'), 'Indian pool title hidden');
-    assert.deepStrictEqual(asked, [2016, 2015, 2014]);
+    assert.deepStrictEqual(asked.slice(0, 3), [2016, 2015, 2014]);
+    assert.strictEqual(asked.length, 15);
     assert.strictEqual(rows[2].id, 'tt92016');
     const india = await addon.find('movie', 'wikimaze-trending', { genre: 'Western' }, 'en', 'in');
     assert.ok(india.rows.some((x) => x.id === 'tt4'));
