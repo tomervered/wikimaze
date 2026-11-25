@@ -148,4 +148,4 @@ async function build(type, id, lang, region = null) {
   return tvmazeList(id, lang);
 }
 
-module.exports = { LISTS, build, zipper };
+module.exports = { LISTS, build, zipper, fromWikidata, fromTvmaze, localNames };

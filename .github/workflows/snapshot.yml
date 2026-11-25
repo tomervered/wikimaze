@@ -1,11 +1,11 @@
-# Rebuilds the add-on's lists every three hours and publishes them to the
+# Rebuilds the add-on's lists once a day (and on code pushes) and publishes them to the
 # `data` branch, which the add-on reads (src/snapshot.js). The branch holds
 # one commit that each run replaces, so it never grows.
 name: Build list snapshot
 
 on:
   schedule:
-    - cron: '23 */3 * * *'
+    - cron: '23 3 * * *'
   push:
     branches: [main]
     paths: ['src/**', 'scripts/**']
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,6 +37,7 @@ jobs:
           PREVIOUS_DIR: previous
           SNAPSHOT_URL: 'off'
           HTTP_TIMEOUT_SCALE: '4'
+          HTTP_GENTLE: '1'
         run: node scripts/build-snapshot.js out/snapshot en he
       - name: Publish to the data branch
         run: |

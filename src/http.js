@@ -10,7 +10,17 @@ const USER_AGENT =
 
 // Parallel calls per host. The Wikidata query service allows 5 per client
 // IP; TVmaze allows 20 calls per 10 seconds and answers in under a second.
-const MAX_PER_HOST = { 'query.wikidata.org': 5, 'api.tvmaze.com': 6 };
+// The snapshot build (HTTP_GENTLE=1) uses fewer: it is in no hurry, and
+// it should never look like a flood to either service.
+const GENTLE = process.env.HTTP_GENTLE === '1';
+const MAX_PER_HOST = GENTLE
+  ? { 'query.wikidata.org': 2, 'api.tvmaze.com': 2 }
+  : { 'query.wikidata.org': 5, 'api.tvmaze.com': 6 };
+// Least time between two calls to one host starting (ms): TVmaze's limit
+// is 20 calls per 10 s, so 600 ms keeps well under it.
+const GAP_PER_HOST = GENTLE
+  ? { 'query.wikidata.org': 500, 'api.tvmaze.com': 600 }
+  : { 'query.wikidata.org': 100, 'api.tvmaze.com': 500 };
 const DEFAULT_PER_HOST = 4;
 const DEFAULT_TIMEOUT = 12000;
 // The snapshot build (scripts/build-snapshot.js) is not answering anyone and
@@ -35,6 +45,12 @@ async function withHostSlot(host, fn) {
     await new Promise((resolve) => h.queue.push(resolve));
   }
   h.active++;
+  const gap = GAP_PER_HOST[host] || 0;
+  if (gap) {
+    const start = Math.max(Date.now(), h.next || 0);
+    h.next = start + gap;
+    if (start > Date.now()) await sleep(start - Date.now());
+  }
   try {
     return await fn();
   } finally {

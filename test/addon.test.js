@@ -395,3 +395,35 @@ test('meta: Wikidata failing falls back to the stored title', async () => {
     undo.forEach((u) => u());
   }
 });
+
+test('genre filter: list titles, then the genre pool, then older years live', async () => {
+  const snapshot = require('../src/snapshot');
+  const e = (id, g, year, extra = {}) => ({ id, type: 'movie', name: id, poster: 'p', releaseInfo: String(year), year, g: [g], ...extra });
+  const asked = [];
+  const undo = [
+    stub(snapshot, 'load', async () => ({
+      titles: { tt1: e('tt1', 'western', 2026), tt2: e('tt2', 'drama', 2026) },
+      lists: { 'movie/wikimaze-trending': ['tt1', 'tt2'] },
+    })),
+    stub(snapshot, 'pool', async () => ({
+      built: '2026-11-25',
+      deepest: 2017,
+      years: { 2025: [e('tt3', 'western', 2025)], 2026: [e('tt1', 'western', 2026), e('tt4', 'western', 2026, { in: true })] },
+    })),
+    stub(wikidata, 'genreYear', async (type, lang, ids, year) => {
+      asked.push(year);
+      return [{ imdb: `tt9${year}`, name: `W${year}`, year: String(year), genres: ['Q172980'] }];
+    }),
+  ];
+  try {
+    const { rows } = await addon.find('movie', 'wikimaze-trending', { genre: 'Western' }, 'en');
+    assert.deepStrictEqual(rows.slice(0, 2).map((x) => x.id), ['tt1', 'tt3']);
+    assert.ok(!rows.some((x) => x.id === 'tt4'), 'Indian pool title hidden');
+    assert.deepStrictEqual(asked, [2016, 2015, 2014]);
+    assert.strictEqual(rows[2].id, 'tt92016');
+    const india = await addon.find('movie', 'wikimaze-trending', { genre: 'Western' }, 'en', 'in');
+    assert.ok(india.rows.some((x) => x.id === 'tt4'));
+  } finally {
+    undo.forEach((u) => u());
+  }
+});

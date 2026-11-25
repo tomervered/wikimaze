@@ -176,6 +176,42 @@ async function classics(type, lang, skip = 0, pageSize = 100, genreIds = null) {
   return out.slice(skip, skip + pageSize);
 }
 
+// Films (or series) of one genre that came out in one year, best known
+// first (sitelinks). Wikidata descriptions carry the year ("2025 American
+// horror film"), so a full-text search for the year finds them; the date
+// filter then drops other matches. Used to keep a genre list going once a
+// list's own titles run out.
+async function genreYear(type, lang, genreIds, year) {
+  const classes = CLASSES[type].map((c) => `P31=${c}`).join('|');
+  const genre = genreIds.map((g) => `P136=${g}|P31=${g}`).join('|');
+  const srsearch = `haswbstatement:P345 haswbstatement:${classes} haswbstatement:${genre} ${year}`;
+  const rows = await sparql(
+    `SELECT ?item ?imdb ?label ?date ?links ?genre ?end ?indian WHERE {
+      SERVICE wikibase:mwapi {
+        bd:serviceParam wikibase:endpoint "www.wikidata.org"; wikibase:api "Search";
+                        mwapi:srsearch ${str(srsearch)}; mwapi:srsort "incoming_links_desc";
+                        mwapi:srlimit "max"; wikibase:limit 500 .
+        ?item wikibase:apiOutputItem mwapi:title.
+      }
+      ?item wdt:P345 ?imdb; wikibase:sitelinks ?links; wdt:${type === 'movie' ? 'P577' : 'P580'} ?date.
+      FILTER(STRSTARTS(?imdb, "tt"))
+      ${type === 'series' ? 'OPTIONAL { ?item wdt:P582 ?end. }' : ''}
+      OPTIONAL { ?item wdt:P136|wdt:P31 ?genre. }
+      ${INDIAN_CLAUSE}
+      ${labelClause(lang)}
+    }`,
+    24 * 3600,
+    30000
+  );
+  const links = new Map(rows.map((r) => [r.imdb.value, Number(r.links.value)]));
+  const genresOf = genreIdsByImdb(rows);
+  const indian = new Set(rows.filter((r) => r.indian).map((r) => r.imdb.value));
+  return dedupeRows(rows)
+    .filter((x) => Number(x.year) === year && (type !== 'movie' || releasedBy(x)))
+    .map((x) => ({ ...x, genres: genresOf.get(x.imdb) || [], indian: indian.has(x.imdb) || undefined }))
+    .sort((p, q) => links.get(q.imdb) - links.get(p.imdb));
+}
+
 // IMDb id -> [Wikidata ids of its genres and classes], from rows with ?genre.
 function genreIdsByImdb(rows) {
   const out = new Map();
@@ -451,6 +487,7 @@ async function newFilms(lang, days = 30) {
 module.exports = {
   newFilms,
   indianImdbs,
+  genreYear,
   releasedBy,
   search,
   classics,

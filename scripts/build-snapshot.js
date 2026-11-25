@@ -15,6 +15,7 @@ const tvmaze = require('../src/tvmaze');
 const genres = require('../src/genres');
 const wikidata = require('../src/wikidata');
 const { REGIONS } = require('../src/trending');
+const pools = require('../src/pools');
 
 // TVmaze lookups per run for series that have none yet (TVmaze allows 20
 // calls per 10 s; the store keeps the answer, so later runs skip them).
@@ -106,6 +107,10 @@ async function main() {
     for (const e of Object.values(merged.titles)) {
       if (e.type === 'series' && e.mzIn) e.in = true;
     }
+    // Genre pools (src/pools.js): their own files, refreshed once a day.
+    const started = Date.now();
+    const sizes = await pools.buildAll(lang, previousDir, outDir, lists, (m) => console.error(`${lang} pool ${m}`));
+    console.log(`${lang} pools: ${sizes.movie} films, ${sizes.series} series in ${Date.now() - started} ms`);
     const file = path.join(outDir, `${lang}.json`);
     fs.writeFileSync(file, JSON.stringify({ built: new Date().toISOString(), ...merged }));
     console.log(

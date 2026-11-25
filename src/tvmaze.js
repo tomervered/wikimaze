@@ -40,6 +40,20 @@ async function search(query) {
   return (rows || []).map((r) => r.show);
 }
 
+// Every show TVmaze has, from its paged index (250 a page, about 400
+// pages). Only the snapshot build calls this.
+async function allShows() {
+  const out = [];
+  for (let page = 0; page < 1000; page += 6) {
+    const batch = await Promise.all(
+      [0, 1, 2, 3, 4, 5].map((i) => getJson(`${API}/shows?page=${page + i}`, { ttl: 6 * 3600, timeout: 30000 }))
+    );
+    for (const shows of batch) out.push(...(shows || []));
+    if (batch.some((x) => !x || !x.length)) break; // past the last page (404)
+  }
+  return out;
+}
+
 // Shows with an episode out in the last `days` days, on TV in the given
 // countries or on streaming services, ordered by TVmaze's popularity weight.
 async function airingNow(countries = ['US', 'GB'], days = 7) {
@@ -109,4 +123,4 @@ function bestLogo(show) {
   return logo && logo.resolutions && logo.resolutions.original && logo.resolutions.original.url;
 }
 
-module.exports = { isIndian, showByImdb, showFull, search, airingNow, premieres, stripHtml, image, bestBackground, bestLogo };
+module.exports = { isIndian, allShows, showByImdb, showFull, search, airingNow, premieres, stripHtml, image, bestBackground, bestLogo };

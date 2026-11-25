@@ -1,7 +1,7 @@
 // Prebuilt lists and the title store, one JSON file per language:
 //   { built, titles: { tt..: entry }, lists: { "type/id[@region]": [tt..] } }
 // (see store.js). scripts/build-snapshot.js writes them and a GitHub Action
-// publishes them to the repository's `data` branch every few hours. The
+// publishes them to the repository's `data` branch once a day. The
 // add-on reads the file from GitHub's CDN and keeps it in memory for a few
 // minutes, so a catalog or search request costs one download at most, never
 // a Wikidata query.
@@ -41,4 +41,15 @@ async function list(type, id, lang, region = null) {
   return items.map((tid) => snap.titles[tid]).filter(Boolean);
 }
 
-module.exports = { load, list, titles, BASE };
+// One genre pool (see pools.js), or null. Read only when a genre filter
+// needs it, and kept in memory like the snapshot.
+async function pool(type, genre, lang) {
+  if (process.env.SNAPSHOT_URL === 'off') return null;
+  try {
+    return await getJson(`${BASE}/pools/${lang}/${type}-${genre}.json`, { ttl: TTL, timeout: 6000 });
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { load, list, titles, pool, BASE };

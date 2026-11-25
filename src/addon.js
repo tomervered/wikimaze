@@ -10,6 +10,7 @@ const { REGIONS } = require('./trending');
 const lists = require('./lists');
 const snapshot = require('./snapshot');
 const store = require('./store');
+const pools = require('./pools');
 
 const PAGE = 100;
 
@@ -217,7 +218,39 @@ async function findAll(type, id, extra, lang, region = null) {
   // A search in any list shows the list's own matches first, then Wikidata
   // and TVmaze matches when the list has fewer than LIVE_BELOW.
   if (q) return withLive(rows, type, q, lang, { ...filters, india });
+  if (filters.genre) return withPool(rows, type, filters, lang, Number(extra.skip) || 0, india);
   return { rows, source: 'store' };
+}
+
+// Most live years one catalog request may ask Wikidata for.
+const LIVE_YEARS_PER_REQUEST = 3;
+
+// A genre filter never runs dry: after the list's own titles of the genre
+// come the genre's pool from WikiMaze's data (see pools.js), then, for
+// films, older years asked live as the viewer scrolls past the stored ones.
+async function withPool(rows, type, filters, lang, skip, india) {
+  const { items, deepest } = pools.entries(await snapshot.pool(type, filters.genre, lang));
+  const have = new Set(rows.map((x) => x.id));
+  const byId = Object.fromEntries(items.filter((x) => !have.has(x.id)).map((x) => [x.id, x]));
+  const out = [...rows, ...store.query(byId, { ...filters, ids: Object.keys(byId) })];
+  for (const x of out) have.add(x.id);
+  const shown = () => out.filter((x) => india || !x.in).length;
+  const need = skip + PAGE + 1;
+  // No stored pool at all means no snapshot either (tests, outages).
+  if (!deepest || type !== 'movie' || shown() >= need) return { rows: out, source: 'store' };
+
+  const genre = genres.byKey(filters.genre);
+  const floor = Math.max(pools.OLDEST_YEAR, filters.from || 0);
+  let asked = 0;
+  let source = 'store';
+  for (let year = Math.min(deepest - 1, filters.to || Infinity); year >= floor && shown() < need && asked < LIVE_YEARS_PER_REQUEST; year--) {
+    const got = await pools.movieYear(genre, year, lang, lists.fromWikidata, 500).catch(() => null);
+    if (!got) break;
+    asked++;
+    source = 'store+live';
+    for (const x of got) if (!have.has(x.id)) have.add(x.id) && out.push(x);
+  }
+  return { rows: out, source };
 }
 
 // Indian titles (store flag `in`, set by the snapshot build) are left out
